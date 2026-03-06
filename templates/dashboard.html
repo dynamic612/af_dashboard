@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scores & Dominance Dashboard</title>
+    <link rel="icon" href="https://www.affine.io/Affine_Icon_White.svg" type="image/svg+xml">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e4e4e7;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 100%; width: 100%; margin: 0 auto; }
+        .header {
+            background: rgba(255,255,255,0.06);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        h1 { color: #a5b4fc; margin-bottom: 16px; font-size: 36px; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin: 16px;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #3730a3 0%, #5b21b6 100%);
+            color: white;
+            padding: 16px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value { font-size: 36px; font-weight: bold; margin-bottom: 4px; }
+        .stat-label { font-size: 12px; opacity: 0.9; }
+        .stat-sublabel { font-size: 24px; opacity: 0.9; margin-top: 12px; font-weight: 600; }
+        .controls { display: flex; gap: 12px; margin: 16px; flex-wrap: wrap; }
+        button {
+            background: #6366f1;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background: #4f46e5; }
+        button:disabled { background: #4b5563; cursor: not-allowed; }
+        .table-container {
+            background: rgba(255,255,255,0.04);
+            border-radius: 12px;
+            padding: 24px;
+            border: 1px solid rgba(255,255,255,0.08);
+            overflow-x: auto;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        #dominanceTable { table-layout: fixed; }
+        #dominanceTable th:nth-child(2),
+        #dominanceTable td:nth-child(2) { max-width: 18%; width: 18%; overflow: hidden; box-sizing: border-box; }
+        thead { background: rgba(99, 102, 241, 0.2); position: sticky; top: 0; }
+        th {
+            padding: 12px 6px;
+            text-align: center;
+            font-weight: 600;
+            color: #a5b4fc;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+        }
+        th.sortable:hover { background: rgba(99, 102, 241, 0.15); }
+        th.sort-asc::after { content: ' ↑'; opacity: 0.9; }
+        th.sort-desc::after { content: ' ↓'; opacity: 0.9; }
+        td {
+            padding: 10px 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            text-align: center;
+        }
+        tr:hover { background: rgba(255,255,255,0.04); }
+        td.pareto-frontier { background: rgba(234, 179, 8, 0.15) !important; }
+        .ineligible-uid-row { background: rgba(75, 85, 99, 0.2) !important; }
+        .model-cell-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            text-align: left;
+            width: 100%;
+        }
+        .model-name-wrap {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .model-name-wrap a {
+            display: inline-block;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .model-actions { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; }
+        .action-btn {
+            display: inline-block;
+            padding: 4px 8px;
+            margin: 0 2px;
+            font-size: 11px;
+            border-radius: 4px;
+            cursor: pointer;
+            background: rgba(99, 102, 241, 0.4);
+            color: #e4e4e7;
+            border: 1px solid rgba(255,255,255,0.2);
+            text-decoration: none;
+        }
+        .action-btn:hover { background: rgba(99, 102, 241, 0.7); color: white; }
+        .action-btn-icon { padding: 4px; display: inline-flex; align-items: center; justify-content: center; }
+        .action-btn .action-icon { vertical-align: middle; display: block; }
+        .action-btn .action-icon-rollout { width: 16px; height: 16px; color: #e4e4e7; }
+        .action-btn:hover .action-icon-rollout { color: white; }
+        .action-btn .action-icon-chute { width: 24px; height: 16px; color: #e4e4e7; }
+        .action-btn:hover .action-icon-chute { color: white; }
+        .action-btn svg.action-icon { flex-shrink: 0; }
+        td.params-cell, td.size-cell { font-size: 15px; color: #9ca3af; }
+        .env-rec-tot { font-size: 0.75em; color: #22c55e; display: block; margin-top: 2px; }
+        .env-rec-below-target { color: #f87171 !important; font-weight: 600; }
+        .env-target { color: #9ca3af; font-size: 0.9em; }
+        body.theme-day .env-target { color: #64748b; }
+        .search-box { margin-bottom: 16px; }
+        .search-box input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            font-size: 14px;
+            background: rgba(0,0,0,0.2);
+            color: #e4e4e7;
+        }
+        .loading { text-align: center; padding: 40px; color: #a5b4fc; font-size: 18px; }
+        .error {
+            background: rgba(239, 68, 68, 0.2);
+            color: #fca5a5;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+        .points { font-weight: 600; color: #fff; }
+        .age { color: #67e8f9; font-size: 16px; font-weight: 600; }
+        .first-block { color: #e51616; font-size: 11px; display: block; margin-top: 2px; }
+        .uid-cell { cursor: pointer; }
+        .uid-cell:hover { color: #a5b4fc; text-decoration: underline; }
+        a { color: #3493ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        #blockInfo { color: #9ca3af; margin-left: 16px; }
+        .clickable { cursor: pointer; color: #1c82f8; text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Scores & Dominance</h1>
+            <div class="nav-links" style="margin-bottom: 12px;">
+                <a href="/" id="navDashboard" style="margin-right: 16px; color: #a5b4fc; font-weight: 600;">Dashboard</a>
+                <a href="/#commits" id="navCommits" style="margin-right: 16px; color: #a5b4fc; font-weight: 600;">Commits</a>
+            </div>
+            <div>
+                <span id="statusText">Ready</span>
+                <span id="blockInfo"></span>
+            </div>
+            <div id="mainDashboardContent">
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="stat-value" id="paretoCount">-</div>
+                    <div class="stat-label">Rewarded UIDs</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="activeCount">-</div>
+                    <div class="stat-label" title="UIDs with data">Displayed</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="eligibleCount">-</div>
+                    <div class="stat-label" title="All envs meet completeness">Eligible</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="displayedInCsvCount">-</div>
+                    <div class="stat-label" title="In address.csv : not">Team vs Enemy</div>
+                    <div class="stat-sublabel" id="teamVsEnemyWeights">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="notReceivedTotal">-</div>
+                    <div class="stat-label" id="notReceivedBreakdown" style="font-size: 11px;"></div>
+                </div>
+            </div>
+            <div class="controls">
+                <button onclick="refreshDataWithCalculation()" id="refreshBtn">Refresh & Calculate</button>
+                <button onclick="toggleAutoRefresh()" id="autoRefreshBtn">Auto-Refresh: ON</button>
+                <button onclick="downloadAllChuteScripts()" id="downloadScriptBtn">Download script</button>
+            </div>
+            <div class="table-container">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="Search by UID, hotkey or model..." oninput="filterTable()">
+                </div>
+                <div id="errorContainer"></div>
+                <div id="loading" class="loading">Loading dominance data...</div>
+                <table id="dominanceTable" style="display: none;">
+                    <thead>
+                        <tr id="tableHeader">
+                            <th>UID</th>
+                            <th class="sortable" onclick="sortTable('model_name')" data-column="model_name">Model</th>
+                            <th class="sortable" onclick="sortTable('manager')" data-column="manager">Owner</th>
+                            <th class="sortable" onclick="sortTable('model_size_b')" data-column="model_size_b">Params</th>
+                            <th class="sortable" onclick="sortTable('model_size_gb')" data-column="model_size_gb">Size</th>
+                            <th class="sortable" onclick="sortTable('dominated_by')" data-column="dominated_by">Dom</th>
+                            <!-- env columns added by JS -->
+                            <th class="sortable" onclick="sortTable('average')" data-column="average">AVG</th>
+                            <th class="sortable" onclick="sortTable('age')" data-column="age">Age (days)</th>
+                            <th class="sortable" onclick="sortTable('points')" data-column="points">Weight (%)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+            </div>
+
+        <div id="commitsPageContent" style="display: none;">
+            <div class="header" style="margin-bottom: 24px;">
+                <h2 style="color: #a5b4fc;">Commit info (all UIDs)</h2>
+                <div style="margin-bottom: 12px;">
+                    <span id="commitsBlockInfo" style="color: #9ca3af;"></span>
+                    <button onclick="loadCommitsData(true)" style="margin-left: 16px;">Refresh</button>
+                </div>
+                <div class="stats" id="commitsStats" style="margin-top: 16px; margin-bottom: 16px;">
+                    <div class="stat-card stat-card-team">
+                        <div class="stat-value" id="commitsTeamCount">-</div>
+                        <div class="stat-label" title="Coldkeys in address.csv">Team UIDs</div>
+                    </div>
+                    <div class="stat-card stat-card-enemy">
+                        <div class="stat-value" id="commitsEnemyCount">-</div>
+                        <div class="stat-label" title="Coldkeys not in address.csv">Enemy UIDs</div>
+                    </div>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="commitsSearchInput" placeholder="Search by UID, owner or hotkey..." oninput="filterCommitsTable()">
+                </div>
+            </div>
+            <div class="table-container">
+                <div id="commitsErrorContainer"></div>
+                <div id="commitsLoading" class="loading">Loading commits...</div>
+                <table id="commitsTable" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-column="uid">UID</th>
+                            <th class="sortable" data-column="owner">Owner</th>
+                            <th class="sortable" data-column="hotkey">Hotkey</th>
+                            <th class="sortable commits-model-cell" data-column="model">Model</th>
+                            <th class="sortable" data-column="revision">Revision</th>
+                            <th class="sortable" data-column="block_number">Block</th>
+                            <th>Age (days)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="commitsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div id="fabGroup" class="fab-group">
+        <button type="button" id="filterTeamBtn" class="filter-fab" onclick="setUidFilter('team')" title="Show only UIDs in address.csv (team)">Team</button>
+        <button type="button" id="filterMeBtn" class="filter-fab" onclick="setUidFilter('me')" title="Show only UIDs whose owner is Kstar">Me</button>
+        <button type="button" id="themeToggleFab" class="theme-toggle-fab" onclick="toggleTheme()" title="Toggle day / night mode" aria-label="Toggle theme">
+            <span class="theme-toggle-icon theme-icon-sun" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
+            <span class="theme-toggle-icon theme-icon-moon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
+        </button>
+    </div>
+
+    <div id="dominanceModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Dominance Details</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+    <div id="samplingListModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="samplingListModalTitle">Sampling List</h2>
+                <span class="close" onclick="closeSamplingListModal()">&times;</span>
+            </div>
+            <div id="samplingListModalBody"></div>
+        </div>
+    </div>
+    <style>
+        .modal { position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); overflow: auto; }
+        .modal-content { background: #1e1e2e; margin: 2% auto; padding: 24px; border-radius: 12px; max-width: 95%; max-height: 90vh; overflow-y: auto; }
+        body.theme-day .modal-content { background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .close { color: #9ca3af; font-size: 28px; cursor: pointer; }
+        .close:hover { color: #fff; }
+        body.theme-day .close { color: #4b5563; }
+        body.theme-day .close:hover { color: #111; }
+        .fab-group { position: fixed; left: 24px; bottom: 24px; z-index: 900; display: flex; flex-direction: column-reverse; align-items: center; gap: 10px; }
+        .filter-fab {
+            padding: 10px 18px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            background: rgba(30, 30, 46, 0.95);
+            color: #e4e4e7;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.06);
+            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .filter-fab:hover { background: rgba(50, 50, 70, 0.98); color: #fff; transform: scale(1.05); }
+        .filter-fab.active { background: rgba(99, 102, 241, 0.9); color: #fff; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
+        body.theme-day .filter-fab { background: rgba(248, 250, 252, 0.95); color: #78350f; box-shadow: 0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06); }
+        body.theme-day .filter-fab:hover { background: rgba(255, 255, 255, 0.98); color: #92400e; }
+        body.theme-day .filter-fab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
+        .theme-toggle-fab {
+            position: relative;
+            left: 0;
+            bottom: 0;
+            z-index: 900;
+            width: 52px;
+            height: 52px;
+            padding: 0;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(30, 30, 46, 0.95);
+            color: #e4e4e7;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.06);
+            transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .theme-toggle-fab:hover {
+            background: rgba(50, 50, 70, 0.98);
+            color: #fff;
+            transform: scale(1.06);
+            box-shadow: 0 6px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08);
+        }
+        .theme-toggle-fab:active { transform: scale(0.98); }
+        .theme-toggle-fab .theme-toggle-icon { position: absolute; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s ease, transform 0.3s ease; }
+        .theme-toggle-fab .theme-icon-sun { opacity: 0; transform: rotate(-90deg) scale(0.8); }
+        .theme-toggle-fab .theme-icon-moon { opacity: 1; }
+        body.theme-day .theme-toggle-fab .theme-icon-sun { opacity: 1; transform: rotate(0) scale(1); }
+        body.theme-day .theme-toggle-fab .theme-icon-moon { opacity: 0; transform: rotate(90deg) scale(0.8); }
+        body.theme-day .theme-toggle-fab {
+            background: rgba(248, 250, 252, 0.95);
+            color: #78350f;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06);
+        }
+        body.theme-day .theme-toggle-fab:hover {
+            background: rgba(255, 255, 255, 0.98);
+            color: #92400e;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08);
+        }
+        .clicked-uid-row { background: rgba(99, 102, 241, 0.3) !important; }
+        .manager-cell a { color: inherit; text-decoration: none; }
+        #dominanceModal .table-wrap.table-container { margin-top: 12px; }
+        .dominance-detail-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+        .dominance-detail-table thead { background: rgba(99, 102, 241, 0.2); }
+        .dominance-detail-table th { padding: 12px 6px; text-align: center; font-weight: 600; color: #a5b4fc; border-bottom: 2px solid rgba(255,255,255,0.1); position: relative; }
+        .dominance-detail-table td { padding: 10px 6px; border-bottom: 1px solid rgba(255,255,255,0.06); text-align: center; }
+        .dominance-detail-table tr:hover { background: rgba(255,255,255,0.04); }
+        .dominance-detail-table th:nth-child(2),
+        .dominance-detail-table td:nth-child(2) { max-width: 25%; width: 25%; overflow: hidden; box-sizing: border-box; text-align: left; }
+        #modalBody .table-wrap { overflow-x: auto; max-width: 100%; }
+        #modalBody .table-wrap table { min-width: 600px; }
+        .sampling-list-inline { display: block; }
+        .sampling-list-copy-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: #6366f1; color: white; cursor: pointer; font-size: 14px; }
+        .sampling-list-copy-btn:hover { background: #4f46e5; }
+        body.theme-day .sampling-list-copy-btn { background: #6366f1; border-color: #4f46e5; }
+        body.theme-day #dominanceModal .table-container { background: white; border-color: rgba(0,0,0,0.08); }
+        body.theme-day .dominance-detail-table th { color: #667eea; border-bottom-color: rgba(0,0,0,0.1); }
+        body.theme-day .dominance-detail-table td { border-bottom-color: rgba(0,0,0,0.06); color: #333; }
+        body.theme-day .dominance-detail-table tr:hover { background: rgba(102, 126, 234, 0.08); }
+        #commitsTable .commits-model-cell { max-width: 15em; overflow: hidden; text-overflow: ellipsis; }
+        body.theme-day { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; }
+        body.theme-day .header { background: white; border-color: rgba(0,0,0,0.08); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        body.theme-day h1, body.theme-day h2 { color: #667eea; }
+        body.theme-day .stat-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+        .stat-card-team { background: linear-gradient(135deg, #15803d 0%, #166534 100%) !important; color: white; }
+        .stat-card-enemy { background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important; color: white; }
+        body.theme-day .stat-card-team { background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important; }
+        body.theme-day .stat-card-enemy { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important; }
+        body.theme-day .table-container { background: white; border-color: rgba(0,0,0,0.08); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        body.theme-day th { color: #667eea; border-bottom-color: rgba(0,0,0,0.1); }
+        body.theme-day td { border-bottom-color: rgba(0,0,0,0.06); color: #333; }
+        body.theme-day tr:hover { background: rgba(102, 126, 234, 0.08); }
+        body.theme-day .nav-links a { color: #667eea; }
+        body.theme-day #statusText, body.theme-day #blockInfo { color: #333; }
+        body.theme-day .action-btn .action-icon-rollout, body.theme-day .action-btn .action-icon-chute { color: #374151; }
+        body.theme-day .action-btn:hover .action-icon-rollout, body.theme-day .action-btn:hover .action-icon-chute { color: white; }
+        body.theme-day .search-box input { background: white; border: 2px solid #ddd; color: #333; }
+        body.theme-day .loading { color: #667eea; }
+        body.theme-day .error { color: #b91c1c; }
+        body.theme-day .model-name,
+        body.theme-day .model-name a { font-weight: 600;  color: #0c73e9 !important; }
+        body.theme-day .model-name a:hover { color: #667eea !important; }
+        body.theme-day td.params-cell,
+        body.theme-day td.size-cell { color: #555 !important; }
+        body.theme-day .age { color: #667eea !important; }
+        body.theme-day .points { color: #0c73e9 !important; }
+        body.theme-day td { color: #333; }
+    </style>
+
+    <script>
+        let currentData = null;
+        let sortColumn = null;
+        let sortDirection = 'asc';
+        let envNames = [];
+        let envNameMap = {};
+        const ROLLOUTS_URL = 'https://www.affine.io/rollouts';
+        const TAOSTATS_ACCOUNT = 'https://taostats.io/account/';
+        let autoRefresh = true;
+        let refreshInterval = null;
+        let uidFilter = 'all';
+        function setUidFilter(f) { uidFilter = (uidFilter === f ? 'all' : f); var t = document.getElementById('filterTeamBtn'); var m = document.getElementById('filterMeBtn'); if (t) t.classList.toggle('active', uidFilter === 'team'); if (m) m.classList.toggle('active', uidFilter === 'me'); if (currentData) updateUI(currentData); }
+
+        function escapeAttr(s) {
+            if (!s) return '';
+            return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        }
+        function isOwnerUid(u) {
+            if (!u) return false;
+            var n = Number(u.uid);
+            return n === 0 || n === -1 || u.af === true || (u.manager === 'Owner');
+        }
+        function getOwnerCell(u) {
+            var manager = (u.manager != null && u.manager !== undefined) ? u.manager : '-';
+            var coldkey = (u.coldkey != null && u.coldkey !== undefined) ? String(u.coldkey).trim() : '';
+            var hotkey = (u.hotkey != null && u.hotkey !== undefined) ? String(u.hotkey).trim() : '';
+            var uidNum = Number(u.uid);
+            var showAsOwner = (uidNum === 0 || uidNum === -1 || u.af === true);
+            var display = showAsOwner ? 'Owner' : (manager !== '-' ? manager : (coldkey ? coldkey.slice(0,5) : '-'));
+            var url = coldkey ? (TAOSTATS_ACCOUNT + encodeURIComponent(coldkey) + '/transfers') : null;
+            var noColdkeyOrHotkey = (!coldkey || coldkey === '') && (!hotkey || hotkey === '');
+            var useRedBold = (display === 'Owner') || noColdkeyOrHotkey;
+            var displayHtml = useRedBold ? '<span style="color:#f87171;font-weight:bold">' + escapeAttr(display) + '</span>' : escapeAttr(display);
+            var inner = url ? '<a href="' + escapeAttr(url) + '" target="_blank" rel="noopener" style="color:inherit;text-decoration:none" title="Taostats">' + displayHtml + '</a>' : displayHtml;
+            return '<td class="manager-cell">' + inner + '</td>';
+        }
+        function copyUidToClipboard(val, e) { if (e) e.stopPropagation(); var s = (val === 'AF' || val === '"AF"') ? 'AF' : String(val); if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(s).catch(function(){}); }
+        function refreshDataWithCalculation() {
+            fetch('/api/dominance/refresh', { method: 'POST' }).then(function(r){ return r.json(); }).then(function(){ loadData(); }).catch(function(){ loadData(); });
+        }
+        function toggleAutoRefresh() {
+            autoRefresh = !autoRefresh;
+            document.getElementById('autoRefreshBtn').textContent = 'Auto-Refresh: ' + (autoRefresh ? 'ON' : 'OFF');
+            if (autoRefresh) { refreshInterval = setInterval(loadData, 600000); } else { clearInterval(refreshInterval); refreshInterval = null; }
+        }
+        async function downloadAllChuteScripts() {
+            if (!currentData || !currentData.uids) return;
+            var models = [];
+            currentData.uids.forEach(function(u){ if (u.model_name && u.model_name !== 'N/A' && models.indexOf(u.model_name) === -1) models.push(u.model_name); });
+            if (models.length === 0) { alert('No models to download'); return; }
+            try {
+                var r = await fetch('/api/chute-scripts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: models }) });
+                var d = await r.json();
+                var scripts = d.scripts || {}, errors = d.errors || {};
+                var parts = [];
+                Object.keys(scripts).forEach(function(m){ var p = scripts[m]; if (p && p.source) parts.push('# ' + m + '\n' + (p.source || '')); });
+                if (parts.length) {
+                    var blob = new Blob([parts.join('\n\n')], { type: 'text/plain' });
+                    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'chute_scripts.txt'; a.click(); URL.revokeObjectURL(a.href);
+                }
+                if (Object.keys(errors).length) alert('Some failed: ' + JSON.stringify(errors));
+            } catch (e) { alert('Download failed: ' + e.message); }
+        }
+        function buildEnvCellsForModal(u) {
+            var data = currentData;
+            if (!envNames.length) return '';
+            return envNames.map(function(c){
+                var o = envNameMap[c];
+                var score = ((u.env_scores && u.env_scores[o]) || 0) * 100;
+                var thresh = ((u.env_thresholds && u.env_thresholds[o]) || 0) * 100;
+                var rec = (u.env_sample_counts && u.env_sample_counts[o]) || 0;
+                var tot = (u.env_total_problems && u.env_total_problems[o]) || 0;
+                var minComp = (data.env_min_completeness && data.env_min_completeness[o] != null) ? data.env_min_completeness[o] : 0.5;
+                var target = tot > 0 ? Math.ceil(minComp * tot) : 0;
+                var pc = u.on_pareto_frontier ? ' pareto-frontier' : '';
+                var recTot = '';
+                if (tot > 0 || rec > 0) {
+                    var recPart = rec < target ? '<span class="env-rec-below-target">' + rec + '</span>' : rec;
+                    recTot = '<br><span class="env-rec-tot">' + recPart + ' / ' + tot + (target > 0 ? ' <span class="env-target">[' + target + ']</span>' : '') + '</span>';
+                }
+                return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(' + u.uid + ', \'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for sampling list">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
+            }).join('');
+        }
+        function showDetailView(uid, hotkey, af) {
+            if (!currentData || !currentData.uids) { document.getElementById('modalBody').innerHTML = '<p class="error">No data loaded.</p>'; document.getElementById('dominanceModal').style.display = 'block'; return; }
+            var clicked = currentData.uids.find(function(u){ return u.uid === uid; });
+            if (!clicked) { document.getElementById('modalBody').innerHTML = '<p class="error">UID ' + uid + ' not found.</p>'; document.getElementById('dominanceModal').style.display = 'block'; return; }
+            var dominatingUids = clicked.dominating_uids || [];
+            var uidToStatus = {};
+            currentData.uids.forEach(function(u){ uidToStatus[u.uid] = u; });
+            var domList = dominatingUids.map(function(domUid){ return uidToStatus[domUid]; }).filter(Boolean);
+            var envHeaders = envNames.map(function(c){ return '<th>' + escapeAttr(c) + '</th>'; }).join('');
+            function domCellHtml(u) {
+                var count = u.dominated_by_count || 0;
+                if (count <= 0) return '<td>0</td>';
+                return '<td><a href="#" onclick="showDetailView(' + u.uid + ',\'' + (u.hotkey || '').replace(/'/g, "\\'") + '\',' + (u.af ? 'true' : 'false') + '); return false;" class="clickable" title="Click to see dominating UIDs">' + count + '</a></td>';
+            }
+            var html = '<p>UID ' + uid + ' is dominated by ' + domList.length + ' miner(s).</p><div class="table-container table-wrap"><table class="dominance-detail-table"><thead><tr><th>UID</th><th>Model</th><th>Owner</th><th>Dom</th>' + envHeaders + '<th>Weight %</th></tr></thead><tbody>';
+            html += '<tr class="clicked-uid-row"><td>' + (clicked.af ? 'AF' : clicked.uid) + '</td><td>' + escapeAttr(clicked.model_name || '-') + '</td>' + getOwnerCell(clicked) + domCellHtml(clicked) + buildEnvCellsForModal(clicked) + '<td>' + ((clicked.points || 0) * 100).toFixed(2) + '</td></tr>';
+            domList.forEach(function(u){
+                html += '<tr><td>' + (u.af ? 'AF' : u.uid) + '</td><td>' + escapeAttr(u.model_name || '-') + '</td>' + getOwnerCell(u) + domCellHtml(u) + buildEnvCellsForModal(u) + '<td>' + ((u.points || 0) * 100).toFixed(2) + '</td></tr>';
+            });
+            html += '</tbody></table></div>';
+            document.getElementById('modalBody').innerHTML = html;
+            document.getElementById('dominanceModal').style.display = 'block';
+        }
+        function closeModal() { document.getElementById('dominanceModal').style.display = 'none'; }
+        async function showSamplingList(uid, env, e) { if (e) e.stopPropagation(); document.getElementById('samplingListModal').style.display = 'block'; document.getElementById('samplingListModalBody').innerHTML = 'Loading...'; try { var r = await fetch('/api/sampling-list/' + uid + '/' + encodeURIComponent(env)); var d = await r.json(); var list = (d.sampling_config && d.sampling_config.sampling_list) || d.current_sampling_list || []; document.getElementById('samplingListModalTitle').textContent = 'Sampling List — UID ' + uid + ', ' + env; var listText; var isEmpty = !list || (Array.isArray(list) && list.length === 0); if (!r.ok) { listText = (d.error || d.message || 'Request failed (' + r.status + ')'); } else if (isEmpty) { listText = '(Empty sampling list — no items)'; } else { listText = Array.isArray(list) ? list.join(', ') : JSON.stringify(list); } window._samplingListCopyText = listText; document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline"><button type="button" class="sampling-list-copy-btn" onclick="copySamplingList()">Copy</button><textarea id="samplingListTextarea" readonly style="width:100%;height:60vh;min-height:200px;font-family:monospace;font-size:16px;padding:12px;border:1px solid #374151;border-radius:8px;background:#111827;color:#e5e7eb;resize:vertical;box-sizing:border-box;margin-top:8px;">' + escapeAttr(listText) + '</textarea></div>'; } catch (err) { var errMsg = err.message || String(err); window._samplingListCopyText = ''; document.getElementById('samplingListModalTitle').textContent = 'Sampling List — UID ' + uid + ', ' + env; document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline"><button type="button" class="sampling-list-copy-btn" onclick="copySamplingList()">Copy</button><textarea id="samplingListTextarea" readonly style="width:100%;height:60vh;min-height:200px;font-family:monospace;font-size:16px;padding:12px;border:1px solid #374151;border-radius:8px;background:#111827;color:#e5e7eb;resize:vertical;box-sizing:border-box;margin-top:8px;">Error: ' + escapeAttr(errMsg) + '</textarea></div>'; } }
+        function copySamplingList() { var text = (typeof window._samplingListCopyText === 'string') ? window._samplingListCopyText : (document.getElementById('samplingListTextarea') && document.getElementById('samplingListTextarea').value); if (!text) return; var btn = document.querySelector('#samplingListModal .sampling-list-copy-btn'); function done() { if (btn) { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = t; }, 1500); } } if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done).catch(function(){ try { var ta = document.getElementById('samplingListTextarea'); if (ta) { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e){} }); } else { try { var ta = document.getElementById('samplingListTextarea'); if (ta) { ta.value = text; ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e){} } }
+        function closeSamplingListModal() { document.getElementById('samplingListModal').style.display = 'none'; }
+        function toggleTheme() {
+            var isDay = document.body.classList.toggle('theme-day');
+            setTheme(isDay ? 'day' : 'night');
+        }
+        function setTheme(mode) {
+            if (mode === 'day') document.body.classList.add('theme-day');
+            else document.body.classList.remove('theme-day');
+            try { localStorage.setItem('dashboardTheme', mode); } catch (e) {}
+        }
+        (function applySavedTheme() {
+            try {
+                var saved = localStorage.getItem('dashboardTheme') || 'night';
+                setTheme(saved === 'day' ? 'day' : 'night');
+            } catch (e) {}
+        })();
+        function loadCommitsData(showLoading) {
+            if (showLoading) { document.getElementById('commitsLoading').style.display = 'block'; document.getElementById('commitsTable').style.display = 'none'; }
+            fetch('/api/commits').then(function(r){ return r.json(); }).then(function(d){
+                document.getElementById('commitsLoading').style.display = 'none';
+                document.getElementById('commitsTable').style.display = 'table';
+                document.getElementById('commitsBlockInfo').textContent = 'Block: ' + (d.block || '-');
+                var teamCount = d.team_uid_count != null ? d.team_uid_count : 0;
+                var enemyCount = d.enemy_uid_count != null ? d.enemy_uid_count : 0;
+                document.getElementById('commitsTeamCount').textContent = teamCount;
+                document.getElementById('commitsEnemyCount').textContent = enemyCount;
+                var commits = d.commits || [];
+                var currentBlock = typeof d.block === 'number' ? d.block : 0;
+                var tbody = document.getElementById('commitsTableBody');
+                var rows = [];
+                commits.forEach(function(c){
+                    var commitOwnerDisplay = c.manager || (c.coldkey ? c.coldkey.slice(0,8) : '-');
+                    var commitNoColdkeyOrHotkey = (!(c.coldkey && String(c.coldkey).trim()) && !(c.hotkey && String(c.hotkey).trim()));
+                    var commitIsOwner = (c.uid === 0 || c.uid === -1 || c.manager === 'Owner');
+                    var commitUseRedBold = commitIsOwner || commitNoColdkeyOrHotkey;
+                    var ownerTd = commitUseRedBold ? '<td><span style="color:#e51616;font-weight:bold">' + escapeAttr(commitOwnerDisplay) + '</span></td>' : '<td>' + escapeAttr(commitOwnerDisplay) + '</td>';
+                    var modelDisplay = c.model_display || (c.model ? (c.model + (c.revision ? '@' + c.revision : '')) : '-');
+                    var repoOnly = (c.model || (modelDisplay !== '-' ? String(modelDisplay).split('@')[0].trim() : ''));
+                    var modelCell = (repoOnly && modelDisplay !== '-') ? '<a href="https://huggingface.co/' + escapeAttr(repoOnly) + '" target="_blank" rel="noopener" class="model-name" title="' + escapeAttr(modelDisplay) + '">' + escapeAttr(modelDisplay) + '</a>' : escapeAttr(modelDisplay);
+                    var blockNum = c.block_number != null ? c.block_number : null;
+                    var ageDays = '-';
+                    if (currentBlock > 0 && blockNum != null && blockNum > 0) {
+                        var ageBlocks = currentBlock - blockNum;
+                        ageDays = (ageBlocks * 12 / 86400).toFixed(1);
+                    }
+                    rows.push('<tr><td>' + c.uid + '</td>' + ownerTd + '<td class="hotkey-cell">' + escapeAttr((c.hotkey || '').slice(0,12)) + '…</td><td class="commits-model-cell">' + modelCell + '</td><td>' + escapeAttr(c.revision || '-') + '</td><td>' + (blockNum != null ? blockNum : '-') + '</td><td>' + ageDays + '</td></tr>');
+                });
+                tbody.innerHTML = rows.join('');
+                filterCommitsTable();
+            }).catch(function(e){ document.getElementById('commitsLoading').style.display = 'none'; document.getElementById('commitsErrorContainer').innerHTML = '<div class="error">' + escapeAttr(e.message) + '</div>'; });
+        }
+        function filterCommitsTable() {
+            var q = (document.getElementById('commitsSearchInput').value || '').toLowerCase().trim();
+            var rows = document.querySelectorAll('#commitsTableBody tr');
+            rows.forEach(function(tr){ var t = tr.textContent.toLowerCase(); tr.style.display = (!q || t.indexOf(q) >= 0) ? '' : 'none'; });
+        }
+        function onHashChange() {
+            var isCommits = window.location.hash === '#commits';
+            document.getElementById('mainDashboardContent').style.display = isCommits ? 'none' : 'block';
+            document.getElementById('commitsPageContent').style.display = isCommits ? 'block' : 'none';
+            document.getElementById('navDashboard').style.fontWeight = isCommits ? 'normal' : '600';
+            document.getElementById('navCommits').style.fontWeight = isCommits ? '600' : 'normal';
+            if (isCommits) loadCommitsData(true);
+        }
+        window.addEventListener('hashchange', onHashChange);
+        if (window.location.hash === '#commits') onHashChange();
+
+        function copyModelAndOpenRollouts(modelName) {
+            const raw = (modelName && modelName !== 'N/A') ? String(modelName).trim() : '';
+            if (!raw) return;
+            const copyText = raw.includes('@') ? raw.split('@')[0].trim() : raw;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(copyText).then(function() {
+                    window.open(ROLLOUTS_URL, '_blank');
+                }).catch(function() {
+                    window.open(ROLLOUTS_URL, '_blank');
+                });
+            } else {
+                window.open(ROLLOUTS_URL, '_blank');
+            }
+        }
+
+        async function openChute(modelName) {
+            if (!modelName) return;
+            try {
+                const r = await fetch('/api/chute-id?model=' + encodeURIComponent(modelName));
+                const d = await r.json();
+                if (d.chute_id) window.open('https://chutes.ai/app/chute/' + d.chute_id + '?tab=source', '_blank');
+                else alert('No chute found for this model.');
+            } catch (e) {
+                alert('Failed to get chute ID.');
+            }
+        }
+
+        async function fetchModelSizes() {
+            const cells = document.querySelectorAll('td.params-cell[data-model], td.size-cell[data-model]');
+            const models = [];
+            const seen = {};
+            cells.forEach(function(c){ var m = c.getAttribute('data-model'); if (m && m !== 'N/A' && !seen[m]) { seen[m] = true; models.push(m); } });
+            if (models.length === 0) return;
+            let offset = 0;
+            try {
+                do {
+                    const r = await fetch('/api/model-sizes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ models: models, offset: offset }) });
+                    const data = await r.json();
+                    const results = data.results || {};
+                    document.querySelectorAll('td.params-cell[data-model]').forEach(function(td){
+                        var m = td.getAttribute('data-model');
+                        var info = results[m];
+                        if (info && (info.size_b != null || info.size_str)) {
+                            var b = info.size_b;
+                            td.textContent = (b != null) ? (b >= 1 ? b.toFixed(0) : b.toFixed(1)) + 'B' : (info.size_str || '—');
+                        }
+                    });
+                    document.querySelectorAll('td.size-cell[data-model]').forEach(function(td){
+                        var m = td.getAttribute('data-model');
+                        var info = results[m];
+                        if (info && info.size_gb != null) td.textContent = info.size_gb.toFixed(1) + ' GB';
+                    });
+                    offset = data.next_offset != null ? data.next_offset : null;
+                } while (offset != null);
+            } catch (e) {}
+        }
+
+        function cleanEnvName(env) {
+            if (env.indexOf(':') >= 0) return env.split(':').pop();
+            return env;
+        }
+
+        function filterTable() {
+            const q = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+            const rows = document.querySelectorAll('#tableBody tr');
+            rows.forEach(tr => {
+                const text = tr.textContent.toLowerCase();
+                tr.style.display = (!q || text.indexOf(q) >= 0) ? '' : 'none';
+            });
+        }
+
+        function sortTable(col) {
+            if (sortColumn === col) sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+            else { sortColumn = col; sortDirection = 'asc'; }
+            if (currentData) updateUI(currentData);
+        }
+
+        function updateSortIndicators() {
+            document.querySelectorAll('th.sortable').forEach(th => {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            if (sortColumn) {
+                const h = document.querySelector('th[data-column="' + sortColumn + '"]');
+                if (h) h.classList.add(sortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        }
+
+        function updateUI(data) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('dominanceTable').style.display = 'table';
+            document.getElementById('errorContainer').innerHTML = '';
+
+            const withPoints = data.uids.filter(u => u.points && u.points > 0).length;
+            let displayedUids = data.uids.filter(u => u.has_data);
+            const hasOwnerInCsv = function(u){ return u.manager != null && u.manager !== '-' && u.manager !== 'Owner' && String(u.manager).trim() !== ''; };
+            const isInTeam = function(u){ return hasOwnerInCsv(u) && !isOwnerUid(u); };
+            if (uidFilter === 'team') displayedUids = displayedUids.filter(isInTeam);
+            else if (uidFilter === 'me') displayedUids = displayedUids.filter(function(u){ return (u.manager || '').includes('Kstar'); });
+            const displayed = displayedUids.length;
+            document.getElementById('paretoCount').textContent = withPoints;
+            document.getElementById('activeCount').textContent = displayed;
+            const eligibleCount = data.uids.filter(function(u){ return u.is_eligible; }).length;
+            document.getElementById('eligibleCount').textContent = eligibleCount;
+            const inCsv = displayedUids.filter(isInTeam).length;
+            const notInCsv = displayed - inCsv;
+            var csvEl = document.getElementById('displayedInCsvCount');
+            if (csvEl) csvEl.innerHTML = '<span style="color:#4ade80">' + inCsv + '</span> : <span style="color:#e51616">' + notInCsv + '</span>';
+            var teamWeight = 0, otherWeight = 0;
+            displayedUids.forEach(function(u){ var p = (u.points != null ? u.points : 0) * 100; if (isInTeam(u)) teamWeight += p; else otherWeight += p; });
+            var weightsEl = document.getElementById('teamVsEnemyWeights');
+            if (weightsEl) weightsEl.innerHTML = '<span style="color:#4ade80">' + teamWeight.toFixed(2) + '%</span> : <span style="color:#e51616">' + otherWeight.toFixed(2) + '%</span>';
+            var totalNotReceived = 0, envNotReceived = {};
+            data.uids.forEach(function(u){
+                if (u.env_total_problems && u.env_sample_counts) {
+                    Object.keys(u.env_total_problems).forEach(function(env){
+                        var tot = u.env_total_problems[env] || 0, rec = u.env_sample_counts[env] || 0;
+                        var nr = Math.max(0, tot - rec);
+                        totalNotReceived += nr;
+                        envNotReceived[env] = (envNotReceived[env] || 0) + nr;
+                    });
+                }
+            });
+            document.getElementById('notReceivedTotal').textContent = totalNotReceived.toLocaleString();
+            var brEl = document.getElementById('notReceivedBreakdown');
+            if (brEl && Object.keys(envNotReceived).length) {
+                brEl.innerHTML = Object.keys(envNotReceived).map(function(e){ return e + ': ' + (envNotReceived[e] || 0).toLocaleString(); }).join('<br>');
+            } else if (brEl) brEl.textContent = 'Not received';
+            document.getElementById('blockInfo').textContent = 'Block: ' + (data.block || '-');
+
+            const first = data.uids.find(u => u.has_data && u.env_scores);
+            if (first) {
+                const orig = Object.keys(first.env_scores || {});
+                envNameMap = {};
+                envNames = orig.map(o => {
+                    const c = cleanEnvName(o);
+                    envNameMap[c] = o;
+                    return c;
+                });
+            }
+
+            const envHeaders = envNames.map(c => {
+                const o = envNameMap[c];
+                return '<th class="sortable" onclick="sortTable(\'env_' + o + '\')" data-column="env_' + o + '">' + c + '</th>';
+            }).join('');
+
+            document.getElementById('tableHeader').innerHTML =
+                '<th>UID</th>' +
+                '<th class="sortable" onclick="sortTable(\'model_name\')" data-column="model_name">Model</th>' +
+                '<th class="sortable" onclick="sortTable(\'manager\')" data-column="manager">Owner</th>' +
+                '<th class="sortable" onclick="sortTable(\'model_size_b\')" data-column="model_size_b">Params</th>' +
+                '<th class="sortable" onclick="sortTable(\'model_size_gb\')" data-column="model_size_gb">Size</th>' +
+                '<th class="sortable" onclick="sortTable(\'dominated_by\')" data-column="dominated_by">Dom</th>' +
+                envHeaders +
+                '<th class="sortable" onclick="sortTable(\'average\')" data-column="average">AVG</th>' +
+                '<th class="sortable" onclick="sortTable(\'age\')" data-column="age">Age (days)</th>' +
+                '<th class="sortable" onclick="sortTable(\'points\')" data-column="points">Weight (%)</th>';
+
+            let rows = displayedUids.slice();
+            if (sortColumn) {
+                rows = [...rows].sort((a, b) => {
+                    let av, bv;
+                    if (sortColumn === 'points') {
+                        av = (a.rank != null ? a.rank : 999);
+                        bv = (b.rank != null ? b.rank : 999);
+                        return sortDirection === 'asc' ? av - bv : bv - av;
+                    }
+                    if (sortColumn === 'age') { av = a.age_days || 0; bv = b.age_days || 0; }
+                    else if (sortColumn === 'dominated_by') { av = a.dominated_by_count || 0; bv = b.dominated_by_count || 0; }
+                    else if (sortColumn === 'average') {
+                        let at = 0, ac = 0, bt = 0, bc = 0;
+                        (a.env_scores && Object.values(a.env_scores).forEach(v => { if (v > 0) { at += v; ac++; } }));
+                        (b.env_scores && Object.values(b.env_scores).forEach(v => { if (v > 0) { bt += v; bc++; } }));
+                        av = ac ? at / ac : 0; bv = bc ? bt / bc : 0;
+                    }
+                    else if (sortColumn.startsWith('env_')) {
+                        const e = sortColumn.replace('env_', '');
+                        av = (a.env_scores && a.env_scores[e]) || 0;
+                        bv = (b.env_scores && b.env_scores[e]) || 0;
+                    }
+                    else if (sortColumn === 'model_name') {
+                        const an = (a.model_name || '').toLowerCase();
+                        const bn = (b.model_name || '').toLowerCase();
+                        return sortDirection === 'asc' ? an.localeCompare(bn) : bn.localeCompare(an);
+                    }
+                    else if (sortColumn === 'manager') {
+                        const an = (a.manager || '').toLowerCase();
+                        const bn = (b.manager || '').toLowerCase();
+                        return sortDirection === 'asc' ? an.localeCompare(bn) : bn.localeCompare(an);
+                    }
+                    else if (sortColumn === 'model_size_b') {
+                        av = (a.model_size_b != null && a.model_size_b !== undefined) ? a.model_size_b : Infinity;
+                        bv = (b.model_size_b != null && b.model_size_b !== undefined) ? b.model_size_b : Infinity;
+                    }
+                    else if (sortColumn === 'model_size_gb') {
+                        av = (a.model_size_gb != null && a.model_size_gb !== undefined) ? a.model_size_gb : Infinity;
+                        bv = (b.model_size_gb != null && b.model_size_gb !== undefined) ? b.model_size_gb : Infinity;
+                    }
+                    else return 0;
+                    if (sortDirection === 'asc') return av - bv;
+                    return bv - av;
+                });
+            } else {
+                rows.sort((a, b) => ((a.rank != null ? a.rank : 999) - (b.rank != null ? b.rank : 999)));
+            }
+
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            rows.forEach(u => {
+                const tr = document.createElement('tr');
+                if (!u.is_active) tr.className = 'ineligible-uid-row';
+
+                const modelName = u.model_name || 'N/A';
+                const repoOnly = modelName !== 'N/A' ? modelName.split('@')[0] : '';
+                const modelEsc = (function(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); })(modelName);
+                let actionsHtml = '';
+                if (modelName !== 'N/A') {
+                    actionsHtml = '<span class="model-actions"><a href="#" class="action-btn action-btn-icon" onclick="copyModelAndOpenRollouts(\'' + (modelName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"') + '\'); return false;" title="Copy model name and open Rollouts"><svg class="action-icon action-icon-rollout" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="currentColor"><path d="M250.004 1.66602C387.157 1.66625 498.341 112.851 498.341 250.004C498.341 387.156 387.156 498.341 250.004 498.341C112.851 498.341 1.66629 387.156 1.66602 250.004C1.66602 112.851 112.851 1.66619 250.004 1.66602ZM74.9541 374.866C113.948 429.435 177.821 465.007 250.004 465.007C322.186 465.007 386.06 429.435 425.054 374.866H74.9541ZM338.333 341.533H421.404L338.332 201.217L338.333 341.533ZM78.6113 341.533H160V204.057L78.6113 341.533ZM249.167 211.667C217.411 211.667 191.667 237.411 191.667 269.167C191.667 300.923 217.411 326.667 249.167 326.667C280.923 326.667 306.667 300.923 306.667 269.167C306.667 237.411 280.923 211.667 249.167 211.667ZM220.13 37.0586C115.527 51.5994 35 141.398 35 250.004C35.0001 276.856 39.9238 302.559 48.916 326.259L220.13 37.0586ZM451.094 326.251C460.084 302.553 465.007 276.854 465.007 250.004C465.007 141.4 384.485 51.6033 279.885 37.0596L451.094 326.251ZM174.242 180H325.772L250.007 52.0244L174.242 180Z"/></svg></a> <a href="#" class="action-btn action-btn-icon" onclick="openChute(\'' + modelEsc.replace(/'/g, "\\'") + '\'); return false;" title="Open on Chutes"><svg class="action-icon action-icon-chute" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 41" fill="none"><path d="M38.01 39.6943C37.1263 41.1364 35.2525 41.4057 34.0442 40.2642L28.6738 35.1904C27.4656 34.049 27.4843 32.0273 28.7133 30.9115L34.1258 25.9979C40.1431 20.5352 48.069 18.406 55.6129 20.2255L59.6853 21.2078C59.8306 21.2428 59.9654 21.3165 60.0771 21.422C60.6663 21.9787 60.3364 23.0194 59.552 23.078L59.465 23.0845C52.0153 23.6409 45.1812 27.9913 40.9759 34.8542L38.01 39.6943Z" fill="currentColor"></path><path d="M15.296 36.5912C14.1726 37.8368 12.2763 37.7221 11.2913 36.349L0.547139 21.3709C-0.432786 20.0048 -0.0547272 18.0273 1.34794 17.1822L22.7709 4.27482C29.6029 0.158495 37.7319 -0.277291 44.8086 3.0934L60.3492 10.4956C60.5897 10.6101 60.7997 10.7872 60.9599 11.0106C61.8149 12.2025 60.8991 13.9056 59.5058 13.7148L50.2478 12.4467C42.8554 11.4342 35.4143 14.2848 30.1165 20.1587L15.296 36.5912Z" fill="currentColor"></path></svg></a></span>';
+                }
+                const domHtml = (u.dominated_by_count > 0) ? '<a href="#" onclick="showDetailView(' + u.uid + ',\'' + (u.hotkey || '').replace(/'/g,"\\'") + '\',' + (u.af ? 'true' : 'false') + '); return false;" class="clickable" title="Click to see dominating UIDs">' + u.dominated_by_count + '</a>' : '0';
+                const modelLink = modelName !== 'N/A'
+                    ? '<a href="https://huggingface.co/' + repoOnly + '" target="_blank" class="model-name" title="' + modelEsc + '">' + modelEsc + '</a>'
+                    : '<span class="model-name">-</span>';
+                const ownerTd = getOwnerCell(u);
+                const paramsVal = (u.model_size_b != null && u.model_size_b !== undefined) ? (u.model_size_b >= 1 ? u.model_size_b.toFixed(0) : u.model_size_b.toFixed(1)) + 'B' : '—';
+                const sizeVal = (u.model_size_gb != null && u.model_size_gb !== undefined) ? u.model_size_gb.toFixed(1) + ' GB' : '—';
+
+                const envCells = envNames.map(c => {
+                    const o = envNameMap[c];
+                    const score = ((u.env_scores && u.env_scores[o]) || 0) * 100;
+                    const thresh = ((u.env_thresholds && u.env_thresholds[o]) || 0) * 100;
+                    const rec = (u.env_sample_counts && u.env_sample_counts[o]) || 0;
+                    const tot = (u.env_total_problems && u.env_total_problems[o]) || 0;
+                    const minComp = (data.env_min_completeness && data.env_min_completeness[o] != null) ? data.env_min_completeness[o] : 0.5;
+                    const target = tot > 0 ? Math.ceil(minComp * tot) : 0;
+                    const pc = u.on_pareto_frontier ? ' pareto-frontier' : '';
+                    var recTot = '';
+                    if (tot > 0 || rec > 0) {
+                        var recPart = rec < target ? '<span class="env-rec-below-target">' + rec + '</span>' : rec;
+                        recTot = '<br><span class="env-rec-tot">' + recPart + ' / ' + tot + (target > 0 ? ' <span class="env-target">[' + target + ']</span>' : '') + '</span>';
+                    }
+                    return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(' + u.uid + ', \'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for sampling list">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
+                }).join('');
+
+                let avg = 0, cnt = 0;
+                envNames.forEach(c => {
+                    const o = envNameMap[c];
+                    const s = (u.env_scores && u.env_scores[o]) || 0;
+                    if (s > 0) { avg += s; cnt++; }
+                });
+                avg = cnt ? (avg / cnt) * 100 : 0;
+                const pointsClass = u.on_pareto_frontier ? 'pareto-frontier' : '';
+                const age = (u.age_days != null) ? u.age_days.toFixed(2) : '0';
+                const fb = u.first_block != null ? '<span class="first-block">' + Number(u.first_block).toLocaleString() + '</span>' : '';
+                const weight = ((u.points != null ? u.points : 0) * 100).toFixed(2);
+
+                tr.innerHTML =
+                    '<td><span class="uid-cell" onclick="copyUidToClipboard(' + (u.af ? '"AF"' : u.uid) + ', event)" title="Click to copy">' + (u.af ? 'AF' : u.uid) + '</span></td>' +
+                    '<td style="text-align: left;"><div class="model-cell-wrap"><span class="model-name-wrap">' + modelLink + '</span>' + actionsHtml + '</div></td>' +
+                    ownerTd +
+                    '<td class="params-cell" data-model="' + modelEsc + '">' + paramsVal + '</td>' +
+                    '<td class="size-cell" data-model="' + modelEsc + '">' + sizeVal + '</td>' +
+                    '<td>' + domHtml + '</td>' +
+                    envCells +
+                    '<td>' + avg.toFixed(1) + '</td>' +
+                    '<td><span class="age">' + age + '</span>' + fb + '</td>' +
+                    '<td class="' + pointsClass + '"><span class="points">' + weight + '</span></td>';
+                tbody.appendChild(tr);
+            });
+
+            updateSortIndicators();
+            filterTable();
+            fetchModelSizes();
+        }
+
+        async function loadData() {
+            const loading = document.getElementById('loading');
+            const errEl = document.getElementById('errorContainer');
+            const btn = document.getElementById('refreshBtn');
+            const tableEl = document.getElementById('dominanceTable');
+            const hadData = !!currentData;
+            loading.style.display = 'block';
+            if (!hadData) {
+                tableEl.style.display = 'none';
+                errEl.innerHTML = '';
+            }
+            btn.disabled = true;
+            try {
+                const r = await fetch('/api/dominance');
+                const data = await r.json();
+                const hasError = (data && typeof data.error === 'string') ? data.error : null;
+                const validData = Array.isArray(data.uids) && (!hadData || data.uids.length > 0);
+                const success = r.ok && !hasError && validData;
+                if (!success) {
+                    var msg = hasError || ('Request failed (' + (r.status || '') + ')') || 'Invalid response';
+                    if (msg.indexOf('403') !== -1 || msg.indexOf('Forbidden') !== -1) msg = 'Scores unavailable (403)';
+                    throw new Error(msg);
+                }
+                currentData = data;
+                updateUI(data);
+                errEl.innerHTML = '';
+                document.getElementById('statusText').textContent = 'Connected';
+            } catch (e) {
+                if (hadData) {
+                    tableEl.style.display = 'table';
+                    errEl.innerHTML = '<div class="error">Update failed: ' + escapeAttr(e.message || String(e)) + '</div>';
+                    document.getElementById('statusText').textContent = 'Update failed';
+                } else {
+                    errEl.innerHTML = '<div class="error">Error: ' + escapeAttr(e.message || String(e)) + '</div>';
+                    document.getElementById('statusText').textContent = 'Error';
+                }
+            } finally {
+                loading.style.display = 'none';
+                btn.disabled = false;
+            }
+        }
+
+        loadData();
+        if (autoRefresh) refreshInterval = setInterval(loadData, 600000);
+    </script>
+</body>
+</html>
