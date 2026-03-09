@@ -16,6 +16,16 @@ Flask app that shows **scores** and **dominance state** using the **same API as 
 
 Add address.csv file in the Directory.
 
+```bash
+cd /root/affine-cortex
+# after editing standalone_dashboard/...
+git add standalone_dashboard
+git commit -m "Update dashboard"
+git subtree split --prefix=standalone_dashboard -b subtree-standalone_dashboard
+git push af_dashboard subtree-standalone_dashboard:main --force
+
+```
+
 Use the **same Python** you will use to run the app (avoids "No module named 'flask'" when a different env is active):
 
 ```bash

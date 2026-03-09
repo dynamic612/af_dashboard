@@ -62,15 +62,29 @@ def clear_metagraph_cache() -> None:
     _metagraph_cache = None
 
 
+def _address_csv_path() -> str:
+    """Resolve address.csv: ADDRESS_CSV env, else standalone_dashboard/address.csv, else ../address.csv."""
+    env_path = os.environ.get("ADDRESS_CSV")
+    if env_path and os.path.isfile(env_path):
+        return os.path.abspath(env_path)
+    if env_path:
+        return os.path.abspath(env_path)
+    base = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (os.path.join(base, "address.csv"), os.path.join(base, "..", "address.csv")):
+        p = os.path.normpath(os.path.abspath(candidate))
+        if os.path.isfile(p):
+            return p
+    return os.path.normpath(os.path.join(base, "address.csv"))
+
+
 def _load_coldkey_manager_map() -> Dict[str, str]:
     """Load address.csv (coldkey -> manager)."""
-    csv_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-    csv_path = os.environ.get("ADDRESS_CSV", os.path.join(csv_dir, "address.csv"))
+    csv_path = _address_csv_path()
     out: Dict[str, str] = {}
     if not os.path.isfile(csv_path):
         return out
     try:
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, "r", encoding="utf-8-sig") as f:
             for line in f:
                 parts = line.strip().split("\t")
                 if len(parts) >= 2:

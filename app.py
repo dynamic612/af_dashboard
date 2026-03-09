@@ -3,6 +3,7 @@ Standalone Flask app: scores and dominance state using the same API as af get-ra
 Does not import from dominance_server or dashboard.
 """
 
+import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,17 +32,83 @@ MIN_COMPLETENESS = 0.9
 
 
 def _csv_dir() -> str:
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+    """Directory containing this app (standalone_dashboard)."""
+    return os.path.dirname(os.path.abspath(__file__))
+
+
+def _address_csv_path() -> str:
+    """Resolve address.csv: ADDRESS_CSV env, else standalone_dashboard/address.csv, else ../address.csv."""
+    env_path = os.environ.get("ADDRESS_CSV")
+    if env_path and os.path.isfile(env_path):
+        return os.path.abspath(env_path)
+    if env_path:
+        return os.path.abspath(env_path)
+    base = _csv_dir()
+    for candidate in (os.path.join(base, "address.csv"), os.path.join(base, "..", "address.csv")):
+        p = os.path.normpath(os.path.abspath(candidate))
+        if os.path.isfile(p):
+            return p
+    return os.path.normpath(os.path.join(base, "address.csv"))
+
+
+def _rank_data_json_path() -> str:
+    """Path to cached rank data (get-rank API response). Override with RANK_DATA_JSON env."""
+    env_path = os.environ.get("RANK_DATA_JSON")
+    if env_path:
+        return os.path.abspath(env_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "rank_data.json")
+
+
+def _is_valid_rank_data(data: Any) -> bool:
+    """Return True if data looks like a valid get-rank response (scores list + block_number)."""
+    if not isinstance(data, dict):
+        return False
+    if "block_number" not in data:
+        return False
+    scores = data.get("scores")
+    if not isinstance(scores, list):
+        return False
+    for s in scores:
+        if not isinstance(s, dict) or not s.get("miner_hotkey"):
+            return False
+    return True
+
+
+def _save_rank_data_to_file(data: Dict[str, Any]) -> None:
+    """Write rank data to JSON file only when data is valid."""
+    if not _is_valid_rank_data(data):
+        return
+    path = _rank_data_json_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
+def _load_rank_data_from_file() -> Optional[Dict[str, Any]]:
+    """Load cached rank data from JSON file. Returns None if missing/invalid."""
+    path = _rank_data_json_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if _is_valid_rank_data(data):
+            return data
+    except Exception:
+        pass
+    return None
 
 
 def _load_coldkey_manager_map() -> Dict[str, str]:
-    """Load address.csv from affine-cortex (tab: Wallet address, Manager(s)). Coldkey -> manager name."""
-    csv_path = os.environ.get("ADDRESS_CSV", os.path.join(_csv_dir(), "address.csv"))
+    """Load address.csv (tab: Wallet address, Manager(s)). Coldkey -> manager name."""
+    csv_path = _address_csv_path()
     out: Dict[str, str] = {}
     if not os.path.isfile(csv_path):
         return out
     try:
-        with open(csv_path, "r", encoding="utf-8") as f:
+        with open(csv_path, "r", encoding="utf-8-sig") as f:
             for line in f:
                 parts = line.strip().split("\t")
                 if len(parts) >= 2:
@@ -54,7 +121,7 @@ def _load_coldkey_manager_map() -> Dict[str, str]:
 
 
 def _load_hotkey_to_coldkey() -> Dict[str, str]:
-    """Optional: hotkey_coldkey.csv in affine-cortex (tab or comma: hotkey, coldkey) to resolve manager from address.csv."""
+    """Optional: hotkey_coldkey.csv in standalone_dashboard (tab or comma: hotkey, coldkey) to resolve manager from address.csv."""
     for name in ("hotkey_coldkey.csv", "hotkey_to_coldkey.csv"):
         path = os.path.join(_csv_dir(), name)
         if not os.path.isfile(path):
@@ -77,13 +144,22 @@ def _load_hotkey_to_coldkey() -> Dict[str, str]:
     return {}
 
 
-def get_all_dominance_data() -> Dict[str, Any]:
+def get_all_dominance_data(force_refresh: bool = False) -> Dict[str, Any]:
     """
-    Fetch from Affine API (same as get-rank) and compute dominance.
-    Universe of miners = API scores list only (no metagraph).
+    Compute dominance from rank data. Dashboard display uses only rank_data.json
+    (no API call). API is used only when force_refresh=True (e.g. POST /api/dominance/refresh);
+    then the response is saved to the JSON file only if valid.
     """
-    base_url = get_api_base_url()
-    scores_data = fetch_scores(base_url)
+    scores_data: Optional[Dict[str, Any]] = None
+    if force_refresh:
+        try:
+            scores_data = fetch_scores(get_api_base_url())
+            if scores_data and _is_valid_rank_data(scores_data):
+                _save_rank_data_to_file(scores_data)
+        except Exception:
+            pass
+    if not scores_data or not _is_valid_rank_data(scores_data):
+        scores_data = _load_rank_data_from_file()
     if not scores_data or not scores_data.get("block_number"):
         return {
             "block": 0,
@@ -96,8 +172,14 @@ def get_all_dominance_data() -> Dict[str, Any]:
             "displayed_count": 0,
         }
 
-    environments = fetch_environments(base_url)
-    scorer_config = fetch_scorer_config(base_url)
+    base_url = get_api_base_url()
+    environments: List[str] = []
+    scorer_config: Dict[str, Any] = {}
+    try:
+        environments = fetch_environments(base_url) or []
+        scorer_config = fetch_scorer_config(base_url) or {}
+    except Exception:
+        pass
     scores_list = scores_data.get("scores", [])
     block_number = scores_data.get("block_number", 0)
     default_min_completeness = scorer_config.get("min_completeness", MIN_COMPLETENESS)
@@ -508,9 +590,9 @@ def api_dominance_uid_dominating(uid: int):
 
 @app.route("/api/dominance/refresh", methods=["POST"])
 def api_dominance_refresh():
-    """Force refresh dominance data (recompute from API)."""
+    """Force refresh: fetch rank API, save to rank_data.json if valid, then return dominance data."""
     try:
-        data = get_all_dominance_data()
+        data = get_all_dominance_data(force_refresh=True)
         return jsonify({
             "success": True,
             "message": f"Dominance data refreshed for block {data['block']}",
