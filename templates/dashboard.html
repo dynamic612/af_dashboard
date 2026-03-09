@@ -270,8 +270,12 @@
     </div>
 
     <div id="fabGroup" class="fab-group">
-        <button type="button" id="filterTeamBtn" class="filter-fab" onclick="setUidFilter('team')" title="Show only UIDs in address.csv (team)">Team</button>
-        <button type="button" id="filterMeBtn" class="filter-fab" onclick="setUidFilter('me')" title="Show only UIDs whose owner is Kstar">Me</button>
+        <button type="button" id="filterTeamBtn" class="filter-fab" onclick="setUidFilter('team')" title="Show only UIDs in address.csv (team)" aria-label="Filter: Team">
+            <span class="filter-fab-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        </button>
+        <button type="button" id="filterMeBtn" class="filter-fab" onclick="setUidFilter('me')" title="Show only UIDs whose owner is Kstar" aria-label="Filter: Me">
+            <span class="filter-fab-icon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+        </button>
         <button type="button" id="themeToggleFab" class="theme-toggle-fab" onclick="toggleTheme()" title="Toggle day / night mode" aria-label="Toggle theme">
             <span class="theme-toggle-icon theme-icon-sun" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></span>
             <span class="theme-toggle-icon theme-icon-moon" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></span>
@@ -307,21 +311,26 @@
         body.theme-day .close:hover { color: #111; }
         .fab-group { position: fixed; left: 24px; bottom: 24px; z-index: 900; display: flex; flex-direction: column-reverse; align-items: center; gap: 10px; }
         .filter-fab {
-            padding: 10px 18px;
+            width: 52px;
+            height: 52px;
+            padding: 0;
             border: none;
-            border-radius: 20px;
+            border-radius: 50%;
             cursor: pointer;
-            font-size: 14px;
-            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             background: rgba(30, 30, 46, 0.95);
             color: #e4e4e7;
             box-shadow: 0 4px 20px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.06);
             transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
         }
-        .filter-fab:hover { background: rgba(50, 50, 70, 0.98); color: #fff; transform: scale(1.05); }
+        .filter-fab .filter-fab-icon { display: flex; align-items: center; justify-content: center; }
+        .filter-fab:hover { background: rgba(50, 50, 70, 0.98); color: #fff; transform: scale(1.06); box-shadow: 0 6px 24px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08); }
+        .filter-fab:active { transform: scale(0.98); }
         .filter-fab.active { background: rgba(99, 102, 241, 0.9); color: #fff; box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4); }
         body.theme-day .filter-fab { background: rgba(248, 250, 252, 0.95); color: #78350f; box-shadow: 0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06); }
-        body.theme-day .filter-fab:hover { background: rgba(255, 255, 255, 0.98); color: #92400e; }
+        body.theme-day .filter-fab:hover { background: rgba(255, 255, 255, 0.98); color: #92400e; box-shadow: 0 6px 24px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.08); }
         body.theme-day .filter-fab.active { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; }
         .theme-toggle-fab {
             position: relative;
