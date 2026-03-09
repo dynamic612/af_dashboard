@@ -14,6 +14,8 @@ Flask app that shows **scores** and **dominance state** using the **same API as 
 
 ## Setup
 
+Add address.csv file in the Directory.
+
 Use the **same Python** you will use to run the app (avoids "No module named 'flask'" when a different env is active):
 
 ```bash
