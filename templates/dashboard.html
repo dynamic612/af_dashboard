@@ -254,13 +254,13 @@
                 <table id="commitsTable" style="display: none;">
                     <thead>
                         <tr>
-                            <th class="sortable" data-column="uid">UID</th>
-                            <th class="sortable" data-column="owner">Owner</th>
-                            <th class="sortable" data-column="hotkey">Hotkey</th>
-                            <th class="sortable commits-model-cell" data-column="model">Model</th>
-                            <th class="sortable" data-column="revision">Revision</th>
-                            <th class="sortable" data-column="block_number">Block</th>
-                            <th>Age (days)</th>
+                            <th class="sortable" onclick="sortCommitsTable('uid')" data-column="uid">UID</th>
+                            <th class="sortable" onclick="sortCommitsTable('owner')" data-column="owner">Owner</th>
+                            <th class="sortable" onclick="sortCommitsTable('hotkey')" data-column="hotkey">Hotkey</th>
+                            <th class="sortable commits-model-cell" onclick="sortCommitsTable('model')" data-column="model">Model</th>
+                            <th class="sortable" onclick="sortCommitsTable('chute_id')" data-column="chute_id">Chute ID</th>
+                            <th class="sortable" onclick="sortCommitsTable('block_number')" data-column="block_number">Block</th>
+                            <th class="sortable" onclick="sortCommitsTable('age_days')" data-column="age_days">Age (days)</th>
                         </tr>
                     </thead>
                     <tbody id="commitsTableBody"></tbody>
@@ -394,6 +394,8 @@
         body.theme-day .dominance-detail-table td { border-bottom-color: rgba(0,0,0,0.06); color: #333; }
         body.theme-day .dominance-detail-table tr:hover { background: rgba(102, 126, 234, 0.08); }
         #commitsTable .commits-model-cell { max-width: 15em; overflow: hidden; text-overflow: ellipsis; }
+        #commitsTable td.chute-id-cell { cursor: pointer; max-width: 10em; overflow: hidden; text-overflow: ellipsis; }
+        #commitsTable td.chute-id-cell:hover { background: rgba(99, 102, 241, 0.15); }
         body.theme-day { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #333; }
         body.theme-day .header { background: white; border-color: rgba(0,0,0,0.08); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         body.theme-day h1, body.theme-day h2 { color: #667eea; }
@@ -548,6 +550,184 @@
                 setTheme(saved === 'day' ? 'day' : 'night');
             } catch (e) {}
         })();
+        var commitsData = null;
+        var commitsCurrentBlock = 0;
+        var commitsSortColumn = null;
+        var commitsSortDirection = 'asc';
+        var commitsChuteIdCache = {};
+
+        function commitModelDisplay(c) {
+            return c.model_display || (c.model ? (c.model + (c.revision ? '@' + c.revision : '')) : '-');
+        }
+
+        function updateCommitsChuteIdCells(model, chuteId) {
+            var display = (chuteId != null && chuteId !== '') ? chuteId : '-';
+            document.querySelectorAll('#commitsTableBody td.chute-id-cell').forEach(function(td) {
+                if (td.getAttribute('data-model') === model) {
+                    td.textContent = display;
+                    td.setAttribute('data-chute-id', chuteId || '');
+                }
+            });
+        }
+
+        function fetchCommitsChuteId(model, onDone) {
+            if (commitsChuteIdCache[model] !== undefined) {
+                if (onDone) onDone(commitsChuteIdCache[model]);
+                return;
+            }
+            fetch('/api/chute-id?model=' + encodeURIComponent(model))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var cid = (d && d.chute_id) ? d.chute_id : null;
+                    commitsChuteIdCache[model] = cid;
+                    updateCommitsChuteIdCells(model, cid);
+                    if (onDone) onDone(cid);
+                })
+                .catch(function() {
+                    commitsChuteIdCache[model] = null;
+                    updateCommitsChuteIdCells(model, null);
+                    if (onDone) onDone(null);
+                });
+        }
+
+        function startCommitsChuteIdProgressiveLoad() {
+            if (!commitsData) return;
+            var models = [];
+            var seen = {};
+            commitsData.forEach(function(c) {
+                var m = commitModelDisplay(c);
+                if (m && m !== '-' && !seen[m]) { seen[m] = true; models.push(m); }
+            });
+            if (models.length === 0) return;
+            var index = 0;
+            function next() {
+                if (index >= models.length) return;
+                var model = models[index++];
+                if (commitsChuteIdCache[model] !== undefined) {
+                    next();
+                    return;
+                }
+                fetchCommitsChuteId(model, function() { next(); });
+            }
+            next();
+        }
+
+        function onCommitsChuteIdCellClick(td) {
+            var model = td.getAttribute('data-model');
+            if (!model || model === '-') return;
+            if (commitsChuteIdCache[model] !== undefined) {
+                var cid = commitsChuteIdCache[model];
+                if (cid && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(cid).then(function() {
+                        var t = td.textContent;
+                        td.textContent = 'Copied!';
+                        setTimeout(function() { td.textContent = (cid || '-'); }, 800);
+                    }).catch(function() {});
+                }
+                if (cid) window.open('https://chutes.ai/app/chute/' + cid + '?tab=source', '_blank');
+                return;
+            }
+            td.textContent = '…';
+            fetchCommitsChuteId(model, function(cid) {
+                td.textContent = (cid != null && cid !== '') ? cid : '-';
+                if (cid && navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(cid).catch(function() {});
+                }
+            });
+        }
+
+        function commitAgeDays(c, currentBlock) {
+            var blockNum = c.block_number != null ? c.block_number : null;
+            if (currentBlock <= 0 || blockNum == null || blockNum <= 0) return null;
+            return (currentBlock - blockNum) * 12 / 86400;
+        }
+
+        function sortCommitsTable(col) {
+            if (commitsSortColumn === col) commitsSortDirection = commitsSortDirection === 'asc' ? 'desc' : 'asc';
+            else { commitsSortColumn = col; commitsSortDirection = 'asc'; }
+            if (commitsData) renderCommitsRows(commitsData, commitsCurrentBlock, commitsSortColumn, commitsSortDirection);
+            updateCommitsSortIndicators();
+        }
+
+        function updateCommitsSortIndicators() {
+            document.querySelectorAll('#commitsTable th.sortable').forEach(function(th) {
+                th.classList.remove('sort-asc', 'sort-desc');
+            });
+            if (commitsSortColumn) {
+                var h = document.querySelector('#commitsTable th[data-column="' + commitsSortColumn + '"]');
+                if (h) h.classList.add(commitsSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+            }
+        }
+
+        function renderCommitsRows(commits, currentBlock, sortCol, sortDir) {
+            var sorted = commits.slice();
+            if (sortCol) {
+                sorted.sort(function(a, b) {
+                    var av, bv;
+                    if (sortCol === 'uid') { av = a.uid; bv = b.uid; }
+                    else if (sortCol === 'owner') {
+                        var ad = a.manager || (a.coldkey ? a.coldkey.slice(0,8) : '-');
+                        var bd = b.manager || (b.coldkey ? b.coldkey.slice(0,8) : '-');
+                        return (sortDir === 'asc' ? 1 : -1) * String(ad).localeCompare(String(bd));
+                    }
+                    else if (sortCol === 'hotkey') { return (sortDir === 'asc' ? 1 : -1) * String(a.hotkey || '').localeCompare(String(b.hotkey || '')); }
+                    else if (sortCol === 'model') {
+                        var am = commitModelDisplay(a);
+                        var bm = commitModelDisplay(b);
+                        return (sortDir === 'asc' ? 1 : -1) * String(am).localeCompare(String(bm));
+                    }
+                    else if (sortCol === 'chute_id') {
+                        var ac = commitsChuteIdCache[commitModelDisplay(a)];
+                        var bc = commitsChuteIdCache[commitModelDisplay(b)];
+                        ac = (ac != null && ac !== '') ? ac : '';
+                        bc = (bc != null && bc !== '') ? bc : '';
+                        return (sortDir === 'asc' ? 1 : -1) * String(ac).localeCompare(String(bc));
+                    }
+                    else if (sortCol === 'block_number') {
+                        av = a.block_number != null ? a.block_number : -1;
+                        bv = b.block_number != null ? b.block_number : -1;
+                    }
+                    else if (sortCol === 'age_days') {
+                        av = commitAgeDays(a, currentBlock);
+                        bv = commitAgeDays(b, currentBlock);
+                        if (av == null) av = -1;
+                        if (bv == null) bv = -1;
+                    }
+                    else return 0;
+                    if (sortCol === 'uid' || sortCol === 'block_number' || sortCol === 'age_days') {
+                        if (av < bv) return sortDir === 'asc' ? -1 : 1;
+                        if (av > bv) return sortDir === 'asc' ? 1 : -1;
+                    }
+                    return 0;
+                });
+            }
+            var rows = [];
+            sorted.forEach(function(c){
+                var commitOwnerDisplay = c.manager || (c.coldkey ? c.coldkey.slice(0,8) : '-');
+                var commitNoColdkeyOrHotkey = (!(c.coldkey && String(c.coldkey).trim()) && !(c.hotkey && String(c.hotkey).trim()));
+                var commitIsOwner = (c.uid === 0 || c.uid === -1 || c.manager === 'Owner');
+                var commitUseRedBold = commitIsOwner || commitNoColdkeyOrHotkey;
+                var ownerTd = commitUseRedBold ? '<td><span style="color:#e51616;font-weight:bold">' + escapeAttr(commitOwnerDisplay) + '</span></td>' : '<td>' + escapeAttr(commitOwnerDisplay) + '</td>';
+                var modelDisplay = commitModelDisplay(c);
+                var repoOnly = (c.model || (modelDisplay !== '-' ? String(modelDisplay).split('@')[0].trim() : ''));
+                var modelCell = (repoOnly && modelDisplay !== '-') ? '<a href="https://huggingface.co/' + escapeAttr(repoOnly) + '" target="_blank" rel="noopener" class="model-name" title="' + escapeAttr(modelDisplay) + '">' + escapeAttr(modelDisplay) + '</a>' : escapeAttr(modelDisplay);
+                var blockNum = c.block_number != null ? c.block_number : null;
+                var ageDays = '-';
+                var ageVal = commitAgeDays(c, currentBlock);
+                if (ageVal != null) ageDays = ageVal.toFixed(1);
+                var chuteIdDisplay = '-';
+                if (modelDisplay && modelDisplay !== '-') {
+                    var cached = commitsChuteIdCache[modelDisplay];
+                    if (cached != null && cached !== '') chuteIdDisplay = cached;
+                }
+                var chuteIdAttr = escapeAttr(modelDisplay);
+                rows.push('<tr><td>' + c.uid + '</td>' + ownerTd + '<td class="hotkey-cell">' + escapeAttr((c.hotkey || '').slice(0,12)) + '…</td><td class="commits-model-cell">' + modelCell + '</td><td class="chute-id-cell" data-model="' + chuteIdAttr + '" onclick="onCommitsChuteIdCellClick(this)" title="Click to load or copy">' + escapeAttr(chuteIdDisplay) + '</td><td>' + (blockNum != null ? blockNum : '-') + '</td><td>' + ageDays + '</td></tr>');
+            });
+            document.getElementById('commitsTableBody').innerHTML = rows.join('');
+            filterCommitsTable();
+            startCommitsChuteIdProgressiveLoad();
+        }
+
         function loadCommitsData(showLoading) {
             if (showLoading) { document.getElementById('commitsLoading').style.display = 'block'; document.getElementById('commitsTable').style.display = 'none'; }
             fetch('/api/commits').then(function(r){ return r.json(); }).then(function(d){
@@ -559,28 +739,10 @@
                 document.getElementById('commitsTeamCount').textContent = teamCount;
                 document.getElementById('commitsEnemyCount').textContent = enemyCount;
                 var commits = d.commits || [];
-                var currentBlock = typeof d.block === 'number' ? d.block : 0;
-                var tbody = document.getElementById('commitsTableBody');
-                var rows = [];
-                commits.forEach(function(c){
-                    var commitOwnerDisplay = c.manager || (c.coldkey ? c.coldkey.slice(0,8) : '-');
-                    var commitNoColdkeyOrHotkey = (!(c.coldkey && String(c.coldkey).trim()) && !(c.hotkey && String(c.hotkey).trim()));
-                    var commitIsOwner = (c.uid === 0 || c.uid === -1 || c.manager === 'Owner');
-                    var commitUseRedBold = commitIsOwner || commitNoColdkeyOrHotkey;
-                    var ownerTd = commitUseRedBold ? '<td><span style="color:#e51616;font-weight:bold">' + escapeAttr(commitOwnerDisplay) + '</span></td>' : '<td>' + escapeAttr(commitOwnerDisplay) + '</td>';
-                    var modelDisplay = c.model_display || (c.model ? (c.model + (c.revision ? '@' + c.revision : '')) : '-');
-                    var repoOnly = (c.model || (modelDisplay !== '-' ? String(modelDisplay).split('@')[0].trim() : ''));
-                    var modelCell = (repoOnly && modelDisplay !== '-') ? '<a href="https://huggingface.co/' + escapeAttr(repoOnly) + '" target="_blank" rel="noopener" class="model-name" title="' + escapeAttr(modelDisplay) + '">' + escapeAttr(modelDisplay) + '</a>' : escapeAttr(modelDisplay);
-                    var blockNum = c.block_number != null ? c.block_number : null;
-                    var ageDays = '-';
-                    if (currentBlock > 0 && blockNum != null && blockNum > 0) {
-                        var ageBlocks = currentBlock - blockNum;
-                        ageDays = (ageBlocks * 12 / 86400).toFixed(1);
-                    }
-                    rows.push('<tr><td>' + c.uid + '</td>' + ownerTd + '<td class="hotkey-cell">' + escapeAttr((c.hotkey || '').slice(0,12)) + '…</td><td class="commits-model-cell">' + modelCell + '</td><td>' + escapeAttr(c.revision || '-') + '</td><td>' + (blockNum != null ? blockNum : '-') + '</td><td>' + ageDays + '</td></tr>');
-                });
-                tbody.innerHTML = rows.join('');
-                filterCommitsTable();
+                commitsCurrentBlock = typeof d.block === 'number' ? d.block : 0;
+                commitsData = commits;
+                renderCommitsRows(commits, commitsCurrentBlock, commitsSortColumn, commitsSortDirection);
+                updateCommitsSortIndicators();
             }).catch(function(e){ document.getElementById('commitsLoading').style.display = 'none'; document.getElementById('commitsErrorContainer').innerHTML = '<div class="error">' + escapeAttr(e.message) + '</div>'; });
         }
         function filterCommitsTable() {

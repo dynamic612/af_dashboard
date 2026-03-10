@@ -5,6 +5,8 @@ Does not import from dominance_server or dashboard.
 
 import json
 import os
+import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Flask, jsonify, redirect, render_template, request
@@ -99,6 +101,37 @@ def _load_rank_data_from_file() -> Optional[Dict[str, Any]]:
     except Exception:
         pass
     return None
+
+
+def _refresh_rank_data_file() -> None:
+    """Fetch scores from API and save to rank_data.json only if valid. No Flask context required."""
+    try:
+        base_url = get_api_base_url()
+        scores_data = fetch_scores(base_url)
+        if scores_data and _is_valid_rank_data(scores_data):
+            _save_rank_data_to_file(scores_data)
+    except Exception:
+        pass
+
+
+def _rank_data_refresh_loop() -> None:
+    """Background loop: refresh once at start, then every 10 minutes (writes only when response is valid)."""
+    while True:
+        _refresh_rank_data_file()
+        time.sleep(600)  # 10 minutes
+
+
+def _start_rank_data_refresh_thread() -> None:
+    """Start daemon thread that updates rank_data.json every 10 minutes when API response is valid."""
+    global _rank_data_refresh_thread
+    if _rank_data_refresh_thread is not None:
+        return
+    _rank_data_refresh_thread = threading.Thread(target=_rank_data_refresh_loop, daemon=True)
+    _rank_data_refresh_thread.start()
+
+
+_rank_data_refresh_thread: Optional[threading.Thread] = None
+_start_rank_data_refresh_thread()
 
 
 def _load_coldkey_manager_map() -> Dict[str, str]:
