@@ -19,12 +19,15 @@ from .api_client import (
     get_api_base_url,
     fetch_all_sampling_configs,
     fetch_chute_script_sync,
-    fetch_sampling_list,
     get_chute_id_sync,
     get_model_sizes_batch,
     reconstruct_from_api_scores,
 )
-from .metagraph_client import get_hotkey_to_coldkey_from_metagraph, get_commits
+from .metagraph_client import (
+    OWNER_DISPLAY_UIDS,
+    get_commits,
+    get_hotkey_to_coldkey_from_metagraph,
+)
 
 app = Flask(__name__, template_folder="templates")
 
@@ -132,6 +135,47 @@ def _start_rank_data_refresh_thread() -> None:
 
 _rank_data_refresh_thread: Optional[threading.Thread] = None
 _start_rank_data_refresh_thread()
+
+# Global Affine /config environments blob (sampling lists, rotation — same for all UIDs).
+_AFFINE_ENV_CONFIG_TTL_SEC = 600
+_affine_env_config_lock = threading.Lock()
+_affine_env_config_cache: Optional[Tuple[float, Dict[str, Any]]] = None
+
+
+def _enrich_env_sampling_for_display(env_name: str, env_data: Any) -> Dict[str, Any]:
+    """Copy env entry and add next_rotation_at when last_rotation_at + rotation_interval are set."""
+    if not isinstance(env_data, dict):
+        return {"name": env_name, "raw": env_data}
+    out = dict(env_data)
+    sc = out.get("sampling_config")
+    if isinstance(sc, dict):
+        sc = dict(sc)
+        last = sc.get("last_rotation_at")
+        interval = sc.get("rotation_interval")
+        if isinstance(last, (int, float)) and isinstance(interval, (int, float)) and interval > 0:
+            sc["next_rotation_at"] = int(last + interval)
+        out["sampling_config"] = sc
+    return out
+
+
+def get_cached_affine_environments() -> Tuple[Dict[str, Any], bool, float]:
+    """
+    Return (environments dict from GET /config, served_from_memory_cache, fetched_at_unix).
+    Refetches from API when TTL expired.
+    """
+    global _affine_env_config_cache
+    now = time.time()
+    with _affine_env_config_lock:
+        if _affine_env_config_cache is not None:
+            ts, data = _affine_env_config_cache
+            if now - ts < _AFFINE_ENV_CONFIG_TTL_SEC:
+                return data, True, ts
+    data = fetch_all_sampling_configs()
+    if not isinstance(data, dict):
+        data = {}
+    with _affine_env_config_lock:
+        _affine_env_config_cache = (now, data)
+    return data, False, now
 
 
 def _load_coldkey_manager_map() -> Dict[str, str]:
@@ -316,8 +360,7 @@ def get_all_dominance_data(force_refresh: bool = False) -> Dict[str, Any]:
             hotkey_to_coldkey[hk] = ck
 
     def manager_and_coldkey(hotkey: str, display_uid: int, score_entry: Optional[Dict] = None) -> Tuple[str, Optional[str]]:
-        # UID 0 or hotkeys not in metagraph (e.g. AF) display as "Owner"
-        if display_uid == 0 or hotkey not in hotkeys_in_metagraph:
+        if display_uid in OWNER_DISPLAY_UIDS:
             coldkey = hotkey_to_coldkey.get(hotkey)
             if not coldkey and score_entry:
                 coldkey = score_entry.get("coldkey") or score_entry.get("wallet_address")
@@ -709,13 +752,17 @@ def commits_redirect():
 
 @app.route("/api/sampling-configs/all")
 def api_sampling_configs_all():
-    """Get all sampling configs from Affine API config."""
+    """All env configs from Affine GET /config (sampling_config, rotation, etc.). Cached ~10 min."""
     try:
-        configs = fetch_all_sampling_configs()
+        raw, from_cache, fetched_at = get_cached_affine_environments()
+        enriched = {k: _enrich_env_sampling_for_display(k, v) for k, v in raw.items()}
         return jsonify({
             "success": True,
-            "environments": configs,
-            "total_environments": len(configs),
+            "environments": enriched,
+            "total_environments": len(enriched),
+            "cached": from_cache,
+            "fetched_at": fetched_at,
+            "cache_ttl_sec": _AFFINE_ENV_CONFIG_TTL_SEC,
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e), "environments": {}})
@@ -723,10 +770,29 @@ def api_sampling_configs_all():
 
 @app.route("/api/sampling-list/<int:uid>/<path:env>")
 def api_sampling_list(uid: int, env: str):
-    """Get sampling list for UID and environment (proxies to Affine API)."""
+    """Sampling config for env from global Affine /config (same for all UIDs; uid ignored)."""
     try:
-        data = fetch_sampling_list(uid, env)
-        return jsonify(data)
+        raw, from_cache, fetched_at = get_cached_affine_environments()
+        env_data = raw.get(env)
+        if env_data is None:
+            return jsonify({
+                "success": False,
+                "error": f"Unknown environment: {env}",
+                "uid": uid,
+                "env": env,
+            }), 404
+        enriched = _enrich_env_sampling_for_display(env, env_data)
+        sc = enriched.get("sampling_config") if isinstance(enriched, dict) else {}
+        return jsonify({
+            "success": True,
+            "uid": uid,
+            "env": env,
+            "source": "affine_config",
+            "cached": from_cache,
+            "fetched_at": fetched_at,
+            "sampling_config": sc if isinstance(sc, dict) else {},
+            "environment": enriched,
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e), "uid": uid, "env": env})
 

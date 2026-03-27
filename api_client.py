@@ -29,21 +29,6 @@ def get_api_base_url() -> str:
     return os.environ.get("API_URL", DEFAULT_API_URL).rstrip("/")
 
 
-def fetch_sampling_list(uid: int, env: str) -> Dict[str, Any]:
-    """GET /samples/pool/uid/{uid}/{env} from Affine API. Returns dict with sampling_config, etc."""
-    base = get_api_base_url()
-    # Normalize env for API (e.g. affine:ded-v2, agentgym:alfworld)
-    env_encoded = urllib.parse.quote(env, safe="")
-    url = f"{base}/samples/pool/uid/{uid}/{env_encoded}"
-    try:
-        r = requests.get(url, timeout=15)
-        if r.ok:
-            return r.json() or {}
-    except Exception:
-        pass
-    return {"success": False, "error": "Could not fetch sampling list", "uid": uid, "env": env}
-
-
 def fetch_all_sampling_configs() -> Dict[str, Any]:
     """GET /config from Affine API and return configs.environments."""
     base = get_api_base_url()

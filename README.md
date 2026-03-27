@@ -6,10 +6,10 @@ Flask app that shows **scores** and **dominance state** using the **same API as 
 
 - **Dashboard**: Same API as `af get-rank`; dominance computed from API data; metagraph for coldkey → Owner from `address.csv`.
 - **Stats**: Rewarded UIDs, Displayed, Eligible, Team vs Enemy (in address.csv : not), Not received (per env), Dominated, Block.
-- **Table**: UID (click to copy), Model (narrow + Rollout/Chute buttons), Owner (Taostats link; “Owner” for UID 0 / non-metagraph), Params, Size, Dom (click for detail modal), env scores (score [threshold] + received/total; click for sampling list), AVE, Age, Weight (%).
+- **Table**: UID (click to copy), Model (narrow + Rollout/Chute buttons), Owner (Taostats link; “Owner” for UID 0 / non-metagraph), Params, Size, Dom (click for detail modal), env scores (score [threshold] + received/total; click for network sampling config), AVE, Age, Weight (%).
 - **Actions**: Refresh & Calculate, Auto-Refresh (60s), Download script (batch chute scripts).
 - **Dominance detail modal**: Click Dom count → list of UIDs that dominate that miner.
-- **Sampling list modal**: Click env score cell → sampling list for that UID/env (from Affine API).
+- **Sampling modal**: Click env score cell → that environment’s row from Affine [`GET /config`](https://api.affine.io/api/v1/config) (sampling list, rotation interval/count, last/next rotation, etc.). Same for all UIDs; server and browser cache ~10 minutes.
 - **Commits page**: Nav “Commits” or `/#commits` → table of UID, Owner, Hotkey, Model, Revision, Block from chain.
 
 ## Setup
@@ -94,5 +94,5 @@ API_URL=http://localhost:1999/api/v1 python -m standalone_dashboard.run
 - `GET /api/chute-script?model=...` – Chute source script for one model
 - `POST /api/chute-scripts` – Batch chute scripts (body: `{"models": [...]}`)
 - `POST /api/model-sizes` – Batch model size/params (body: `{"models": [...]}`)
-- `GET /api/sampling-configs/all` – Sampling configs (Affine API config)
-- `GET /api/sampling-list/<uid>/<env>` – Sampling list for UID/env (proxies to Affine API)
+- `GET /api/sampling-configs/all` – All env configs from Affine `GET /config` (cached ~10 min server-side); response includes `cached`, `fetched_at`, `cache_ttl_sec`
+- `GET /api/sampling-list/<uid>/<env>` – Same global env config as above (`uid` ignored; kept for old links)

@@ -386,9 +386,19 @@
         #modalBody .table-wrap { overflow-x: auto; max-width: 100%; }
         #modalBody .table-wrap table { min-width: 600px; }
         .sampling-list-inline { display: block; }
-        .sampling-list-copy-btn { padding: 8px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: #6366f1; color: white; cursor: pointer; font-size: 14px; }
+        .sampling-list-tools-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 14px;
+            margin-bottom: 8px;
+        }
+        .sampling-list-section-label { font-size: 14px; color: #9ca3af; text-align: left; flex: 1; min-width: 0; }
+        .sampling-list-copy-btn { flex-shrink: 0; padding: 8px 16px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.2); background: #6366f1; color: white; cursor: pointer; font-size: 14px; }
         .sampling-list-copy-btn:hover { background: #4f46e5; }
         body.theme-day .sampling-list-copy-btn { background: #6366f1; border-color: #4f46e5; }
+        body.theme-day .sampling-list-section-label { color: #64748b; }
         body.theme-day #dominanceModal .table-container { background: white; border-color: rgba(0,0,0,0.08); }
         body.theme-day .dominance-detail-table th { color: #667eea; border-bottom-color: rgba(0,0,0,0.1); }
         body.theme-day .dominance-detail-table td { border-bottom-color: rgba(0,0,0,0.06); color: #333; }
@@ -442,17 +452,20 @@
             if (!s) return '';
             return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         }
+        var OWNER_DISPLAY_UIDS = { 0: true, 1001: true, 1002: true, 1003: true };
+        function isOwnerDisplayUid(uid) {
+            return OWNER_DISPLAY_UIDS[Number(uid)] === true;
+        }
         function isOwnerUid(u) {
             if (!u) return false;
-            var n = Number(u.uid);
-            return n === 0 || n === -1 || u.af === true || (u.manager === 'Owner');
+            return isOwnerDisplayUid(u.uid);
         }
         function getOwnerCell(u) {
             var manager = (u.manager != null && u.manager !== undefined) ? u.manager : '-';
             var coldkey = (u.coldkey != null && u.coldkey !== undefined) ? String(u.coldkey).trim() : '';
             var hotkey = (u.hotkey != null && u.hotkey !== undefined) ? String(u.hotkey).trim() : '';
             var uidNum = Number(u.uid);
-            var showAsOwner = (uidNum === 0 || uidNum === -1 || u.af === true);
+            var showAsOwner = isOwnerDisplayUid(uidNum);
             var display = showAsOwner ? 'Owner' : (manager !== '-' ? manager : (coldkey ? coldkey.slice(0,5) : '-'));
             var url = coldkey ? (TAOSTATS_ACCOUNT + encodeURIComponent(coldkey) + '/transfers') : null;
             var noColdkeyOrHotkey = (!coldkey || coldkey === '') && (!hotkey || hotkey === '');
@@ -505,7 +518,7 @@
                     var recPart = rec < target ? '<span class="env-rec-below-target">' + rec + '</span>' : rec;
                     recTot = '<br><span class="env-rec-tot">' + recPart + ' / ' + tot + (target > 0 ? ' <span class="env-target">[' + target + ']</span>' : '') + '</span>';
                 }
-                return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(' + u.uid + ', \'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for sampling list">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
+                return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(\'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for network sampling config">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
             }).join('');
         }
         function showDetailView(uid, hotkey, af) {
@@ -532,8 +545,118 @@
             document.getElementById('dominanceModal').style.display = 'block';
         }
         function closeModal() { document.getElementById('dominanceModal').style.display = 'none'; }
-        async function showSamplingList(uid, env, e) { if (e) e.stopPropagation(); document.getElementById('samplingListModal').style.display = 'block'; document.getElementById('samplingListModalBody').innerHTML = 'Loading...'; try { var r = await fetch('/api/sampling-list/' + uid + '/' + encodeURIComponent(env)); var d = await r.json(); var list = (d.sampling_config && d.sampling_config.sampling_list) || d.current_sampling_list || []; document.getElementById('samplingListModalTitle').textContent = 'Sampling List — UID ' + uid + ', ' + env; var listText; var isEmpty = !list || (Array.isArray(list) && list.length === 0); if (!r.ok) { listText = (d.error || d.message || 'Request failed (' + r.status + ')'); } else if (isEmpty) { listText = '(Empty sampling list — no items)'; } else { listText = Array.isArray(list) ? list.join(', ') : JSON.stringify(list); } window._samplingListCopyText = listText; document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline"><button type="button" class="sampling-list-copy-btn" onclick="copySamplingList()">Copy</button><textarea id="samplingListTextarea" readonly style="width:100%;height:60vh;min-height:200px;font-family:monospace;font-size:16px;padding:12px;border:1px solid #374151;border-radius:8px;background:#111827;color:#e5e7eb;resize:vertical;box-sizing:border-box;margin-top:8px;">' + escapeAttr(listText) + '</textarea></div>'; } catch (err) { var errMsg = err.message || String(err); window._samplingListCopyText = ''; document.getElementById('samplingListModalTitle').textContent = 'Sampling List — UID ' + uid + ', ' + env; document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline"><button type="button" class="sampling-list-copy-btn" onclick="copySamplingList()">Copy</button><textarea id="samplingListTextarea" readonly style="width:100%;height:60vh;min-height:200px;font-family:monospace;font-size:16px;padding:12px;border:1px solid #374151;border-radius:8px;background:#111827;color:#e5e7eb;resize:vertical;box-sizing:border-box;margin-top:8px;">Error: ' + escapeAttr(errMsg) + '</textarea></div>'; } }
-        function copySamplingList() { var text = (typeof window._samplingListCopyText === 'string') ? window._samplingListCopyText : (document.getElementById('samplingListTextarea') && document.getElementById('samplingListTextarea').value); if (!text) return; var btn = document.querySelector('#samplingListModal .sampling-list-copy-btn'); function done() { if (btn) { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = t; }, 1500); } } if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done).catch(function(){ try { var ta = document.getElementById('samplingListTextarea'); if (ta) { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e){} }); } else { try { var ta = document.getElementById('samplingListTextarea'); if (ta) { ta.value = text; ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e){} } }
+        var affineSamplingConfigsClient = null;
+        var AFFINE_CONFIG_CLIENT_TTL_MS = 10 * 60 * 1000;
+        function formatUnixTs(sec) {
+            if (sec == null || sec === '') return '—';
+            var n = Number(sec);
+            if (!isFinite(n)) return String(sec);
+            try { return new Date(n * 1000).toISOString(); } catch (e) { return String(sec); }
+        }
+        async function ensureAffineSamplingConfigs(forceRefresh) {
+            var now = Date.now();
+            if (!forceRefresh && affineSamplingConfigsClient && (now - affineSamplingConfigsClient.ts) < AFFINE_CONFIG_CLIENT_TTL_MS) {
+                return affineSamplingConfigsClient;
+            }
+            var r = await fetch('/api/sampling-configs/all');
+            var d = await r.json();
+            if (!d.success) throw new Error(d.error || 'Failed to load Affine /config');
+            affineSamplingConfigsClient = {
+                ts: now,
+                environments: d.environments || {},
+                serverCached: d.cached,
+                fetchedAt: d.fetched_at
+            };
+            return affineSamplingConfigsClient;
+        }
+        function prefetchAffineSamplingConfigs() {
+            ensureAffineSamplingConfigs(false).catch(function() {});
+        }
+        function buildSamplingEnvModalContent(envApiKey, envRow) {
+            if (!envRow || typeof envRow !== 'object') {
+                return {
+                    title: 'Sampling — ' + envApiKey,
+                    subtitle: 'Network-wide config (same for all UIDs)',
+                    summaryHtml: '<p class="error">No entry for this environment in Affine /config.</p>',
+                    listCount: 0,
+                    listDisplayText: '',
+                    copyText: ''
+                };
+            }
+            var display = envRow.display_name || envApiKey;
+            var lines = [];
+            if (envRow.enabled_for_sampling != null) lines.push('enabled_for_sampling: ' + envRow.enabled_for_sampling);
+            if (envRow.enabled_for_scoring != null) lines.push('enabled_for_scoring: ' + envRow.enabled_for_scoring);
+            if (envRow.min_completeness != null) lines.push('min_completeness: ' + envRow.min_completeness);
+            var sc = envRow.sampling_config || {};
+            if (sc.rotation_enabled != null) lines.push('rotation_enabled: ' + sc.rotation_enabled);
+            if (sc.rotation_interval != null) lines.push('rotation_interval_seconds: ' + sc.rotation_interval);
+            if (sc.rotation_count != null) lines.push('rotation_count (problems per rotation): ' + sc.rotation_count);
+            if (sc.sampling_count != null) lines.push('sampling_count (target list size): ' + sc.sampling_count);
+            if (sc.scheduling_weight != null) lines.push('scheduling_weight: ' + sc.scheduling_weight);
+            if (sc.last_rotation_at != null) {
+                lines.push('last_rotation_at: ' + formatUnixTs(sc.last_rotation_at) + ' (unix ' + sc.last_rotation_at + ')');
+            }
+            if (sc.next_rotation_at != null) {
+                lines.push('next_rotation_at: ' + formatUnixTs(sc.next_rotation_at) + ' (unix ' + sc.next_rotation_at + ')');
+            }
+            var list = sc.sampling_list || [];
+            var listCount = Array.isArray(list) ? list.length : 0;
+            var listOnly = listCount ? list.join(', ') : '';
+            var summaryText = lines.join('\n');
+            var summaryHtml = '<pre style="margin:0;padding:12px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(0,0,0,0.25);font-size:13px;line-height:1.45;text-align:left;white-space:pre-wrap;overflow-x:auto">' + escapeAttr(summaryText) + '</pre>';
+            return {
+                title: 'Sampling — ' + display + ' (' + envApiKey + ')',
+                subtitle: 'From Affine GET /config — same for all miners. Cached ~10 min.',
+                summaryHtml: summaryHtml,
+                listCount: listCount,
+                listDisplayText: listOnly,
+                copyText: listOnly
+            };
+        }
+        async function showSamplingList(envApiKey, e) {
+            if (e) e.stopPropagation();
+            document.getElementById('samplingListModal').style.display = 'block';
+            document.getElementById('samplingListModalBody').innerHTML = 'Loading...';
+            document.getElementById('samplingListModalTitle').textContent = 'Sampling — ' + envApiKey;
+            try {
+                var pack = await ensureAffineSamplingConfigs(false);
+                var envRow = pack.environments[envApiKey];
+                var built = buildSamplingEnvModalContent(envApiKey, envRow);
+                document.getElementById('samplingListModalTitle').textContent = built.title;
+                window._samplingListCopyText = built.copyText;
+                var sub = built.subtitle ? '<p style="color:#9ca3af;font-size:13px;margin-bottom:10px;text-align:left">' + escapeAttr(built.subtitle) + '</p>' : '';
+                var n = built.listCount != null ? built.listCount : 0;
+                var countLabel = n === 1 ? '1 task ID' : (n + ' task IDs');
+                var copyDisabled = listInTa ? '' : ' disabled style="opacity:0.5;cursor:not-allowed"';
+                var toolsRow = '<div class="sampling-list-tools-row"><span class="sampling-list-section-label">' + escapeAttr(countLabel) + '</span><button type="button" class="sampling-list-copy-btn"' + copyDisabled + ' onclick="copySamplingList()">Copy list</button></div>';
+                var taStyle = 'width:100%;height:42vh;min-height:160px;font-family:monospace;font-size:14px;padding:12px;border:1px solid #374151;border-radius:8px;background:#111827;color:#e5e7eb;resize:vertical;box-sizing:border-box;';
+                var listInTa = built.listDisplayText != null ? built.listDisplayText : '';
+                document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline">' + sub + built.summaryHtml + toolsRow + '<textarea id="samplingListTextarea" readonly style="' + taStyle + '">' + escapeAttr(listInTa) + '</textarea></div>';
+            } catch (err) {
+                var errMsg = err.message || String(err);
+                window._samplingListCopyText = '';
+                document.getElementById('samplingListModalTitle').textContent = 'Sampling — ' + envApiKey;
+                document.getElementById('samplingListModalBody').innerHTML = '<div class="sampling-list-inline"><p class="error">' + escapeAttr(errMsg) + '</p></div>';
+            }
+        }
+        function copySamplingList() {
+            var ta = document.getElementById('samplingListTextarea');
+            var text = (typeof window._samplingListCopyText === 'string') ? window._samplingListCopyText : (ta && ta.value);
+            if (text == null) text = '';
+            if (!text) return;
+            var btn = document.querySelector('#samplingListModal .sampling-list-copy-btn');
+            function done() {
+                if (btn) { var t = btn.textContent; btn.textContent = 'Copied!'; setTimeout(function(){ btn.textContent = t; }, 1500); }
+            }
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).then(done).catch(function(){
+                    try { if (ta) { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e) {}
+                });
+            } else {
+                try { if (ta) { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); } } catch(e) {}
+            }
+        }
         function closeSamplingListModal() { document.getElementById('samplingListModal').style.display = 'none'; }
         function toggleTheme() {
             var isDay = document.body.classList.toggle('theme-day');
@@ -703,9 +826,9 @@
             }
             var rows = [];
             sorted.forEach(function(c){
-                var commitOwnerDisplay = c.manager || (c.coldkey ? c.coldkey.slice(0,8) : '-');
+                var commitIsOwner = isOwnerDisplayUid(c.uid);
+                var commitOwnerDisplay = commitIsOwner ? 'Owner' : (c.manager || (c.coldkey ? c.coldkey.slice(0,8) : '-'));
                 var commitNoColdkeyOrHotkey = (!(c.coldkey && String(c.coldkey).trim()) && !(c.hotkey && String(c.hotkey).trim()));
-                var commitIsOwner = (c.uid === 0 || c.uid === -1 || c.manager === 'Owner');
                 var commitUseRedBold = commitIsOwner || commitNoColdkeyOrHotkey;
                 var ownerTd = commitUseRedBold ? '<td><span style="color:#e51616;font-weight:bold">' + escapeAttr(commitOwnerDisplay) + '</span></td>' : '<td>' + escapeAttr(commitOwnerDisplay) + '</td>';
                 var modelDisplay = commitModelDisplay(c);
@@ -761,20 +884,49 @@
         window.addEventListener('hashchange', onHashChange);
         if (window.location.hash === '#commits') onHashChange();
 
-        function copyModelAndOpenRollouts(modelName) {
-            const raw = (modelName && modelName !== 'N/A') ? String(modelName).trim() : '';
-            if (!raw) return;
-            const copyText = raw.includes('@') ? raw.split('@')[0].trim() : raw;
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(copyText).then(function() {
-                    window.open(ROLLOUTS_URL, '_blank');
-                }).catch(function() {
-                    window.open(ROLLOUTS_URL, '_blank');
-                });
-            } else {
-                window.open(ROLLOUTS_URL, '_blank');
+        function copyToClipboardSync(text) {
+            if (!text) return false;
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = text;
+                ta.setAttribute('readonly', '');
+                ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+                document.body.appendChild(ta);
+                ta.focus();
+                ta.select();
+                ta.setSelectionRange(0, text.length);
+                var ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+                return ok;
+            } catch (e) {
+                return false;
             }
         }
+        function copyModelAndOpenRollouts(modelName) {
+            var raw = (modelName && modelName !== 'N/A') ? String(modelName).trim() : '';
+            if (!raw) return;
+            var copyText = raw.indexOf('@') >= 0 ? raw.split('@')[0].trim() : raw;
+            var synced = copyToClipboardSync(copyText);
+            if (!synced && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(copyText).catch(function() {});
+            }
+            window.open(ROLLOUTS_URL, '_blank');
+        }
+        (function bindRolloutButtonDelegation() {
+            var tb = document.getElementById('tableBody');
+            if (!tb || tb._rolloutClickBound) return;
+            tb._rolloutClickBound = true;
+            tb.addEventListener('click', function(e) {
+                var link = e.target.closest('a[data-rollout-model]');
+                if (!link || !tb.contains(link)) return;
+                e.preventDefault();
+                var enc = link.getAttribute('data-rollout-model');
+                if (enc == null || enc === '') return;
+                var decoded;
+                try { decoded = decodeURIComponent(enc); } catch (err) { decoded = enc; }
+                copyModelAndOpenRollouts(decoded);
+            });
+        })();
 
         async function openChute(modelName) {
             if (!modelName) return;
@@ -978,7 +1130,7 @@
                 const modelEsc = (function(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); })(modelName);
                 let actionsHtml = '';
                 if (modelName !== 'N/A') {
-                    actionsHtml = '<span class="model-actions"><a href="#" class="action-btn action-btn-icon" onclick="copyModelAndOpenRollouts(\'' + (modelName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"') + '\'); return false;" title="Copy model name and open Rollouts"><svg class="action-icon action-icon-rollout" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="currentColor"><path d="M250.004 1.66602C387.157 1.66625 498.341 112.851 498.341 250.004C498.341 387.156 387.156 498.341 250.004 498.341C112.851 498.341 1.66629 387.156 1.66602 250.004C1.66602 112.851 112.851 1.66619 250.004 1.66602ZM74.9541 374.866C113.948 429.435 177.821 465.007 250.004 465.007C322.186 465.007 386.06 429.435 425.054 374.866H74.9541ZM338.333 341.533H421.404L338.332 201.217L338.333 341.533ZM78.6113 341.533H160V204.057L78.6113 341.533ZM249.167 211.667C217.411 211.667 191.667 237.411 191.667 269.167C191.667 300.923 217.411 326.667 249.167 326.667C280.923 326.667 306.667 300.923 306.667 269.167C306.667 237.411 280.923 211.667 249.167 211.667ZM220.13 37.0586C115.527 51.5994 35 141.398 35 250.004C35.0001 276.856 39.9238 302.559 48.916 326.259L220.13 37.0586ZM451.094 326.251C460.084 302.553 465.007 276.854 465.007 250.004C465.007 141.4 384.485 51.6033 279.885 37.0596L451.094 326.251ZM174.242 180H325.772L250.007 52.0244L174.242 180Z"/></svg></a> <a href="#" class="action-btn action-btn-icon" onclick="openChute(\'' + modelEsc.replace(/'/g, "\\'") + '\'); return false;" title="Open on Chutes"><svg class="action-icon action-icon-chute" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 41" fill="none"><path d="M38.01 39.6943C37.1263 41.1364 35.2525 41.4057 34.0442 40.2642L28.6738 35.1904C27.4656 34.049 27.4843 32.0273 28.7133 30.9115L34.1258 25.9979C40.1431 20.5352 48.069 18.406 55.6129 20.2255L59.6853 21.2078C59.8306 21.2428 59.9654 21.3165 60.0771 21.422C60.6663 21.9787 60.3364 23.0194 59.552 23.078L59.465 23.0845C52.0153 23.6409 45.1812 27.9913 40.9759 34.8542L38.01 39.6943Z" fill="currentColor"></path><path d="M15.296 36.5912C14.1726 37.8368 12.2763 37.7221 11.2913 36.349L0.547139 21.3709C-0.432786 20.0048 -0.0547272 18.0273 1.34794 17.1822L22.7709 4.27482C29.6029 0.158495 37.7319 -0.277291 44.8086 3.0934L60.3492 10.4956C60.5897 10.6101 60.7997 10.7872 60.9599 11.0106C61.8149 12.2025 60.8991 13.9056 59.5058 13.7148L50.2478 12.4467C42.8554 11.4342 35.4143 14.2848 30.1165 20.1587L15.296 36.5912Z" fill="currentColor"></path></svg></a></span>';
+                    actionsHtml = '<span class="model-actions"><a href="#" class="action-btn action-btn-icon" data-rollout-model="' + encodeURIComponent(modelName) + '" title="Copy model name and open Rollouts"><svg class="action-icon action-icon-rollout" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="currentColor"><path d="M250.004 1.66602C387.157 1.66625 498.341 112.851 498.341 250.004C498.341 387.156 387.156 498.341 250.004 498.341C112.851 498.341 1.66629 387.156 1.66602 250.004C1.66602 112.851 112.851 1.66619 250.004 1.66602ZM74.9541 374.866C113.948 429.435 177.821 465.007 250.004 465.007C322.186 465.007 386.06 429.435 425.054 374.866H74.9541ZM338.333 341.533H421.404L338.332 201.217L338.333 341.533ZM78.6113 341.533H160V204.057L78.6113 341.533ZM249.167 211.667C217.411 211.667 191.667 237.411 191.667 269.167C191.667 300.923 217.411 326.667 249.167 326.667C280.923 326.667 306.667 300.923 306.667 269.167C306.667 237.411 280.923 211.667 249.167 211.667ZM220.13 37.0586C115.527 51.5994 35 141.398 35 250.004C35.0001 276.856 39.9238 302.559 48.916 326.259L220.13 37.0586ZM451.094 326.251C460.084 302.553 465.007 276.854 465.007 250.004C465.007 141.4 384.485 51.6033 279.885 37.0596L451.094 326.251ZM174.242 180H325.772L250.007 52.0244L174.242 180Z"/></svg></a> <a href="#" class="action-btn action-btn-icon" onclick="openChute(\'' + modelEsc.replace(/'/g, "\\'") + '\'); return false;" title="Open on Chutes"><svg class="action-icon action-icon-chute" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 62 41" fill="none"><path d="M38.01 39.6943C37.1263 41.1364 35.2525 41.4057 34.0442 40.2642L28.6738 35.1904C27.4656 34.049 27.4843 32.0273 28.7133 30.9115L34.1258 25.9979C40.1431 20.5352 48.069 18.406 55.6129 20.2255L59.6853 21.2078C59.8306 21.2428 59.9654 21.3165 60.0771 21.422C60.6663 21.9787 60.3364 23.0194 59.552 23.078L59.465 23.0845C52.0153 23.6409 45.1812 27.9913 40.9759 34.8542L38.01 39.6943Z" fill="currentColor"></path><path d="M15.296 36.5912C14.1726 37.8368 12.2763 37.7221 11.2913 36.349L0.547139 21.3709C-0.432786 20.0048 -0.0547272 18.0273 1.34794 17.1822L22.7709 4.27482C29.6029 0.158495 37.7319 -0.277291 44.8086 3.0934L60.3492 10.4956C60.5897 10.6101 60.7997 10.7872 60.9599 11.0106C61.8149 12.2025 60.8991 13.9056 59.5058 13.7148L50.2478 12.4467C42.8554 11.4342 35.4143 14.2848 30.1165 20.1587L15.296 36.5912Z" fill="currentColor"></path></svg></a></span>';
                 }
                 const domHtml = (u.dominated_by_count > 0) ? '<a href="#" onclick="showDetailView(' + u.uid + ',\'' + (u.hotkey || '').replace(/'/g,"\\'") + '\',' + (u.af ? 'true' : 'false') + '); return false;" class="clickable" title="Click to see dominating UIDs">' + u.dominated_by_count + '</a>' : '0';
                 const modelLink = modelName !== 'N/A'
@@ -1002,7 +1154,7 @@
                         var recPart = rec < target ? '<span class="env-rec-below-target">' + rec + '</span>' : rec;
                         recTot = '<br><span class="env-rec-tot">' + recPart + ' / ' + tot + (target > 0 ? ' <span class="env-target">[' + target + ']</span>' : '') + '</span>';
                     }
-                    return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(' + u.uid + ', \'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for sampling list">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
+                    return '<td class="' + pc + ' env-score-cell" onclick="showSamplingList(\'' + o.replace(/'/g, "\\'") + '\', event)" title="Click for network sampling config">' + score.toFixed(1) + ' [' + thresh.toFixed(1) + ']' + recTot + '</td>';
                 }).join('');
 
                 let avg = 0, cnt = 0;
@@ -1034,6 +1186,7 @@
             updateSortIndicators();
             filterTable();
             fetchModelSizes();
+            if (envNames.length) prefetchAffineSamplingConfigs();
         }
 
         async function loadData() {

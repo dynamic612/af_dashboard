@@ -8,6 +8,9 @@ import json
 import os
 from typing import Any, Dict, List, Optional
 
+# UIDs shown as "Owner" in the dashboard (not in address.csv / metagraph fallback).
+OWNER_DISPLAY_UIDS = frozenset({0, 1001, 1002, 1003})
+
 # Optional: only used when bittensor is available
 _metagraph_cache: Optional[Dict[str, str]] = None
 
@@ -136,7 +139,10 @@ def get_commits(
         for uid in range(len(hotkeys)):
             hotkey = str(hotkeys[uid]).strip() if uid < len(hotkeys) else ""
             coldkey = str(coldkeys[uid]).strip() if uid < len(coldkeys) else None
-            manager = coldkey_manager_map.get(coldkey) if coldkey else None
+            if uid in OWNER_DISPLAY_UIDS:
+                manager = "Owner"
+            else:
+                manager = coldkey_manager_map.get(coldkey) if coldkey else None
             model = revision = block_number = model_display = None
             commitments_list = all_commitments.get(hotkey, [])
             if commitments_list:
